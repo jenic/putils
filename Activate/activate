@@ -17,7 +17,7 @@ my $activatelogdir = $ENV{HOME}."/.motion/logs";
 my $fm = 3; # File multiplier, 3 files per event
 my $ethresh = (7 * $fm); # Where 7 is the threshold of events before an alert
 my @asec = (20, 35); # Grace period for Events outside of time windows (stop, start, respectively)
-my @networks = ('freenode', 'Rizon Network');
+#my @networks = ('freenode', 'Rizon Network');
 
 # Bits Variable uses same idea as *nix file perms
 # Switchbit = 1
@@ -27,7 +27,7 @@ my @networks = ('freenode', 'Rizon Network');
 my $bits = 0;
 sub checkforFiles;
 sub formatTime;
-sub ircdbus;
+#sub ircdbus;
 sub logmsg;
 sub stateCheck;
 
@@ -60,12 +60,22 @@ sleep 2.5; # Give some time to abort before locking
 #system 'dbus-send','--session','--dest=org.gnome.ScreenSaver',
 #	'--type=method_call','/org/gnome/ScreenSaver','org.gnome.ScreenSaver.SetActive','boolean:true';
 system 'xscreensaver-command','-lock';
+
 #No longer using XChat
 #&ircdbus("away $amsg");
-system 'purple-remote','setstatus?status=away&message='.$amsg.' (@'.sprintf("%04d%02d%02dT%02d%02dZ",$year + 1900, $mon + 1, $mday, $hour, $min).')';
+system 'purple-remote',
+			 'setstatus?status=away&message=' . $amsg . ' (@' . 
+			 sprintf("%04d%02d%02dT%02d%02dZ"
+				 			, $year + 1900
+							, $mon + 1
+							, $mday
+							, $hour
+							, $min
+							) . ')';
 my $songpos = `qdbus org.kde.amarok /Player org.freedesktop.MediaPlayer.PositionGet`;
 sleep 5; # Give some time to get out of room
 system 'qdbus','org.kde.amarok','/Player','org.freedesktop.MediaPlayer.Stop';
+
 system 'motion'; # this now daemonizes
 sleep 2; # give time for motion to start
 my $mpid = `cat /tmp/motion.pid`; # Too lazy to do this properly right now
@@ -89,13 +99,14 @@ sub checkforFiles {
 }
 sub formatTime {
 	if($_[0] < 60) {
-		return $_[0].'s';
+		return $_[0] . 's';
 	} elsif(($_[0] > 60) && ($_[0] < 3600)) {
 		return sprintf("%.3fm",($_[0]/60));
 	} else {
 		return sprintf("%.3fh",(($_[0]/60)/60));
 	}
 }
+=item no longer use XChat
 sub ircdbus {
 	my @c;
 	for (@networks) {
@@ -111,6 +122,7 @@ sub ircdbus {
 		'/org/xchat/Remote', 'org.xchat.plugin.Command', "string:$_[0]";
 	}
 }
+=cut
 sub stateCheck {
 	my $out;
 	my $stopTime = time;
@@ -138,7 +150,7 @@ $SIG{INT} = sub {
 		system("killall motion");
 		warn "Could not detect the PID file, please check ps for proper daemon termination.\n";
 	} else {
-		kill 2, $mpid; # Your services are no longer required
+		kill 2, $mpid;
 	}
 	my $stopTime = time;
 	system 'purple-remote','setstatus?status=available&message=';
@@ -154,8 +166,9 @@ $SIG{INT} = sub {
 	# This will be reflected in event bits with a value >= 6
 	my @events = <$eventdir/*>;
 	if ((@events % $fm) > 0) {
-		system 'zenity','--error','--text=Event modulo exists! An error occured!';
-		print "Dumping Data...\nEvent Interpolation: @events";
+		# GUI method is starting to bug me
+		#system 'zenity','--error','--text=Event modulo exists! An error occured!';
+		print "Event modulo exists! Dumping Data...\nEvent Interpolation: @events";
 		$bits += 2;
 	}
 	open LOG, ">>$activatelogdir/$mon.$year.log" or die "Cant open Logfile! ($!)";
@@ -163,8 +176,22 @@ $SIG{INT} = sub {
 	close LOG;
 	print "System Surveillence Ended.\nEvent Bits: $bits\nTime Elapsed: " . &formatTime(($stopTime - $startTime)),
 				"Events Recorded: ".(@events / $fm)."\nLog $activatelogdir/$mon.$year.log appended.";
-	system 'zenity','--error','--text=You have over 7 events that require review. Get off your fucking ass.' if (@events > $ethresh);
 	print &stateCheck;
+	return 0 unless (@events > $ethresh);
+	
+	print "Threshold ($ethresh) reached. Would you like to review records now? [Y/n] ";
+	chomp(my $response = <STDIN>);
+	return 1 if ($response =~ /n/i);
+	my @avis = glob $eventdir . '/*.avi';
+	`mplayer -really-quiet @avis`;
+	
+	print "\nCleanup Recordings? [y/N] ";
+	$response = <STDIN>;
+	chomp $response;
+	return 0 unless ($response =~ /y/i);
+
+	@avis = glob $eventdir . '/*';
+	unlink $_ for (@avis);
 };
 
 
