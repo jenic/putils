@@ -183,7 +183,7 @@ $SIG{INT} = sub {
 	chomp(my $response = <STDIN>);
 	return 1 if ($response =~ /n/i);
 	my @avis = glob $eventdir . '/*.avi';
-	`mplayer -really-quiet @avis`;
+	system 'mplayer', '-fixed-vo', '-quiet', @avis;
 	
 	print "\nCleanup Recordings? [y/N] ";
 	$response = <STDIN>;
@@ -194,7 +194,7 @@ $SIG{INT} = sub {
 	unlink $_ for (@avis);
 };
 
-
+print "Now handling client connections...\n":
 # Listen for connections
 for ( ; $paddr = accept(Client, Server); close Client) {
 	my ($port, $iaddr) = sockaddr_in($paddr);
