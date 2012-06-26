@@ -17,7 +17,6 @@ my $activatelogdir = $ENV{HOME}."/.motion/logs";
 my $fm = 3; # File multiplier, 3 files per event
 my $ethresh = (7 * $fm); # Where 7 is the threshold of events before an alert
 my @asec = (20, 35); # Grace period for Events outside of time windows (stop, start, respectively)
-#my @networks = ('freenode', 'Rizon Network');
 
 # Bits Variable uses same idea as *nix file perms
 # Switchbit = 1
@@ -27,7 +26,6 @@ my @asec = (20, 35); # Grace period for Events outside of time windows (stop, st
 my $bits = 0;
 sub checkforFiles;
 sub formatTime;
-#sub ircdbus;
 sub logmsg;
 sub stateCheck;
 
@@ -54,15 +52,10 @@ listen(Server, SOMAXCONN) || die "listen: $!";
 print "Begin: $amsg";
 logmsg "Server started on port $port";
 my $paddr;
-#$SIG{CHLD} = \&REAPER;
 
 sleep 2.5; # Give some time to abort before locking
-#system 'dbus-send','--session','--dest=org.gnome.ScreenSaver',
-#	'--type=method_call','/org/gnome/ScreenSaver','org.gnome.ScreenSaver.SetActive','boolean:true';
 system 'xscreensaver-command','-lock';
 
-#No longer using XChat
-#&ircdbus("away $amsg");
 system 'purple-remote',
 			 'setstatus?status=away&message=' . $amsg . ' (@' . 
 			 sprintf("%04d%02d%02dT%02d%02dZ"
@@ -72,9 +65,8 @@ system 'purple-remote',
 							, $hour
 							, $min
 							) . ')';
-my $songpos = `qdbus org.kde.amarok /Player org.freedesktop.MediaPlayer.PositionGet`;
 sleep 5; # Give some time to get out of room
-system 'qdbus','org.kde.amarok','/Player','org.freedesktop.MediaPlayer.Stop';
+system 'mpc', '-q', 'pause';
 
 system 'motion'; # this now daemonizes
 sleep 2; # give time for motion to start
@@ -106,23 +98,7 @@ sub formatTime {
 		return sprintf("%.3fh",(($_[0]/60)/60));
 	}
 }
-=item no longer use XChat
-sub ircdbus {
-	my @c;
-	for (@networks) {
-		my $t =  `dbus-send --dest=org.xchat.service --print-reply --type=method_call /org/xchat/Remote org.xchat.plugin.FindContext string:"$_" string:""`;
-		chomp $t;
-		push @c, chop $t;
-	}
 
-	for(@c) {
-		system 'dbus-send', '--session', '--dest=org.xchat.service', '--type=method_call', 
-		'/org/xchat/Remote','org.xchat.plugin.SetContext', "uint32:$_";
-		system 'dbus-send', '--session', '--dest=org.xchat.service', '--type=method_call',
-		'/org/xchat/Remote', 'org.xchat.plugin.Command', "string:$_[0]";
-	}
-}
-=cut
 sub stateCheck {
 	my $out;
 	my $stopTime = time;
@@ -154,20 +130,13 @@ $SIG{INT} = sub {
 	}
 	my $stopTime = time;
 	system 'purple-remote','setstatus?status=available&message=';
-	system 'qdbus','org.kde.amarok','/Player','org.freedesktop.MediaPlayer.Play';
-	system 'qdbus', 'org.kde.amarok', '/Player', 'org.freedesktop.MediaPlayer.PositionSet', $songpos;
-	# Lack of gnome volume manager makes this necessary
-	#system 'perl', '/home/jenic/bin/paswitch', '0';
-	#No more XChat
-	#&ircdbus('back');
+	system 'mpc', '-q', 'toggle';
 	&checkforFiles(0); # Handle any stray .raw files
 
 	# If an event modulu exists after above subroutine runs something is seriously wrong
 	# This will be reflected in event bits with a value >= 6
 	my @events = <$eventdir/*>;
 	if ((@events % $fm) > 0) {
-		# GUI method is starting to bug me
-		#system 'zenity','--error','--text=Event modulo exists! An error occured!';
 		print "Event modulo exists! Dumping Data...\nEvent Interpolation: @events";
 		$bits += 2;
 	}
@@ -183,7 +152,7 @@ $SIG{INT} = sub {
 	chomp(my $response = <STDIN>);
 	return 1 if ($response =~ /n/i);
 	my @avis = glob $eventdir . '/*.avi';
-	system 'mplayer', '-fixed-vo', '-quiet', @avis;
+	system 'mplayer', '-fixed-vo', '-really-quiet', @avis;
 	
 	print "\nCleanup Recordings? [y/N] ";
 	$response = <STDIN>;
@@ -194,7 +163,7 @@ $SIG{INT} = sub {
 	unlink $_ for (@avis);
 };
 
-print "Now handling client connections...\n":
+print "Now handling client connections...\n";
 # Listen for connections
 for ( ; $paddr = accept(Client, Server); close Client) {
 	my ($port, $iaddr) = sockaddr_in($paddr);
