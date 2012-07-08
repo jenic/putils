@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 use strict;
 use warnings;
-use POSIX ":sys_wait_h";
+#use POSIX ":sys_wait_h";
 use Getopt::Euclid qw[ :minimal_keys ];
 use Proc::Daemon;
 use Encode;
@@ -13,24 +13,24 @@ my $pid = -1;
 
 sub debug;
 $SIG{CHLD} = sub {
-	debug("Child reported for reapin!");
-	waitpid($pid, WNOHANG);
+	debug("Child reported for reapin! (pid var is $pid)");
+	waitpid($pid || -1, 0);
 };
 
 Proc::Daemon::Init unless $ARGV{debug};
 
 debug("Beginning Loop");
 while (1) {
-	my @playlist = split "\n", `mpc playlist`;
-	debug("Playlist:\n@playlist");
 	# If we have a child process running, don't fork another, that is silly
 	next if ($pid > 1 && kill 0 => $pid);
+	my @playlist = split "\n", `mpc playlist`;
+	debug("Playlist:\n@playlist");
 	debug("Checking Playlist");
 	# Once playlist gets below certain threshold, fork child for heavy lifting:
 	$pid = fork if(@playlist < $ARGV{thresh});
 	next if ($pid || $pid == -1);
 	# Now we are the child
-	debug("Child Forked: $pid");
+	debug("Child Forked!");
 	my @library = split "\n", `mpc listall`;
 	
 	# Generate appropriate amount via rand @library
@@ -98,14 +98,14 @@ Switchy dohickeys
 Run in debug mode. In particular, the program will not daemonize itself.
 Default to false.
 
-=item -t[hresh]
+=item -t[hresh] <thresh>
 
 Items to keep in playlist until appending new items. Somewhat equivalent to
 Audio::MPD's -old functionality. Defaults to 10.
 
 =for Euclid:
-	thresh.type			integer > 0
-	thresh.default	10
+	thresh.type:		integer > 0
+	thresh.default:	10
 
 =item -a[dd] <add>
 
