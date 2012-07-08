@@ -4,7 +4,7 @@ use warnings;
 use feature ":5.10";
 
 my %presets = (
-	default => 'amarok',
+	default => 'mpd',
 	strings =>
 		{ plugin	=> 'ALSA plug-in [plugin-container]'
 		, mplayer	=> 'MPlayer'
@@ -23,9 +23,9 @@ Example 2: $0 1
 	This will change default app to sink #1
 Example 3: $0 i1194
 	appname can be substituted for client ID found in client list
+	(Feature available only if presets->{lambdas}->{raw} is defined)
 ----------
-Null	List Clients
-?!	List Sinks
+Null	List Clients/Sinks
 N/A	Show this help
 EOF
 
@@ -55,6 +55,7 @@ for (@lines) {
 given($ARGV[0]) {
 	when (undef) {
 		print "$_ => " . $apps{$_} . "\n" for (keys %apps);
+		print `pacmd list-sinks | grep index`; # just bastardize this, fuck doing it in perl
 	}
 	when (/^[A-z]/) {
 		my $sink = $ARGV[1] || 0;
@@ -66,9 +67,6 @@ given($ARGV[0]) {
 		my $app = &presets($ARGV[1] || undef);
 		system "pactl", "move-sink-input", $app, $ARGV[0];
 		print HELPTEXT if($? != 0);
-	}
-	when ("?!") {
-		print `pacmd list-sinks | grep index`; # just bastardize this, fuck doing it in perl
 	}
 	default { print HELPTEXT; }
 }
