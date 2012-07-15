@@ -15,6 +15,10 @@ my $sock = 0;
 
 sub mkSock;
 sub mpd;
+sub playlist;
+sub listall;
+sub add;
+sub plen;
 sub debug;
 $SIG{CHLD} = sub {
 	debug("Child reported for reapin! (pid var is $pid)");
@@ -22,7 +26,11 @@ $SIG{CHLD} = sub {
 };
 END { $sock->close() if $sock; }
 
-Proc::Daemon::Init unless $ARGV{debug};
+if($ARGV{debug}) {
+	print "$_ => " . $ARGV{$_} . "\n" for(keys %ARGV);
+} else {
+	Proc::Daemon::Init;
+}
 
 debug("Beginning Loop");
 while (1) {
@@ -30,32 +38,29 @@ while (1) {
 	next if ($pid > 1 && kill 0 => $pid);
 	# Did our socket time out?
 	$sock = &mkSock unless $sock;
-	debug("Playlist:\n@playlist");
-	debug("Checking Playlist");
-	my $pcount = &plen;
+	my $p = &plen;
+	debug("Checking Playlist: $p");
 	# Once playlist gets below certain threshold, fork child for heavy lifting:
-	$pid = fork if($pcount < $ARGV{thresh});
+	$pid = fork if($p < $ARGV{thresh});
 	next if ($pid || $pid == -1);
 	# Now we are the child
-	debug("Child Forked!");
-	my @library = split "\n", &mpd('listall');
-	my @playlist = split "\n", &mpd('playlist');
+	debug("Child Forked! $pid");
+	my @library = &listall;
+	my @playlist = &playlist;
 	
 	# Generate appropriate amount via rand @library
-	my @new;
 	PICK:
-	while (@new < $ARGV{add}) {
+	for (0..$ARGV{add}) {
 		my $pick = encode('utf-8', $library[rand @library]);
 		# Don't add entries that are already queued
 		for (@playlist) {
-			next PICK if($pick eq $_);
+			redo PICK if($pick eq $_);
 		}
-		push @new, decode('utf-8', $pick);
+		# Add to playlist
+		&add(decode('utf-8', $pick));
+		debug("Added $pick");
 	}
 	
-	# add to playlist
-	$" = qw(\n);
-	`echo "@new" | mpc add`;
 	# End child, return to infinite loop
 	exit;
 } continue {
@@ -82,8 +87,24 @@ sub mpd {
 	my $cmd	= shift;
 	print $sock "$cmd\n";
 	my $reply;
-	$sock->recv($reply, 1024);
-	return $reply;
+	while(<$sock>) {
+		last if (/^OK$/);
+		next if (/^directory:/);
+		$reply .= $_;
+	}
+	return $reply || 1;
+}
+sub playlist {
+	return (map { (split ':')[-1] } (split "\n", &mpd('playlist')));
+}
+sub listall {
+	# How do we get regex to *return* string as shown with 'r' modifier :(
+	return (map { (s/file:\s//) ? $_ : () } (split "\n", &mpd('listall')));
+}
+sub add {
+	my $file = shift;
+	my $add = &mpd('add "' . $file . '"');
+	return $add;
 }
 sub plen {
 	return	(split ': ', 
