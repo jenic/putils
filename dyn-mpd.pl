@@ -3,6 +3,7 @@ use strict;
 use warnings;
 #use POSIX ":sys_wait_h";
 use Getopt::Euclid qw[ :minimal_keys ];
+use IO::Socket::INET;
 use Proc::Daemon;
 use Encode;
 
@@ -10,12 +11,16 @@ use Encode;
 # This method does not handle the playlist,
 # only adds to it. Thus, consume mode is needed
 my $pid = -1;
+my $sock = 0;
 
+sub mkSock;
+sub mpd;
 sub debug;
 $SIG{CHLD} = sub {
 	debug("Child reported for reapin! (pid var is $pid)");
 	waitpid($pid || -1, 0);
 };
+END { $sock->close() if $sock; }
 
 Proc::Daemon::Init unless $ARGV{debug};
 
@@ -23,15 +28,18 @@ debug("Beginning Loop");
 while (1) {
 	# If we have a child process running, don't fork another, that is silly
 	next if ($pid > 1 && kill 0 => $pid);
-	my @playlist = split "\n", `mpc playlist`;
+	# Did our socket time out?
+	$sock = &mkSock unless $sock;
 	debug("Playlist:\n@playlist");
 	debug("Checking Playlist");
+	my $pcount = &plen;
 	# Once playlist gets below certain threshold, fork child for heavy lifting:
-	$pid = fork if(@playlist < $ARGV{thresh});
+	$pid = fork if($pcount < $ARGV{thresh});
 	next if ($pid || $pid == -1);
 	# Now we are the child
 	debug("Child Forked!");
-	my @library = split "\n", `mpc listall`;
+	my @library = split "\n", &mpd('listall');
+	my @playlist = split "\n", &mpd('playlist');
 	
 	# Generate appropriate amount via rand @library
 	my @new;
@@ -57,6 +65,33 @@ while (1) {
 
 exit; # Lol wat you doin here?
 
+sub mkSock {
+	my $sock = IO::Socket::INET->new
+		( PeerAddr	=> $ARGV{host}
+		, PeerPort	=> $ARGV{port}
+		, Proto		=> 'tcp'
+		, Timeout	=> ($ARGV{sleep} + 1)
+		);
+	die "Unable to connect to mpd: $!\n" unless $sock;
+	debug("Socket Created!");
+	my $ack = <$sock>;
+	die "Not MPD? ($ack)\n" unless ($ack =~ /^OK MPD/);
+	return $sock;
+}
+sub mpd {
+	my $cmd	= shift;
+	print $sock "$cmd\n";
+	my $reply;
+	$sock->recv($reply, 1024);
+	return $reply;
+}
+sub plen {
+	return	(split ': ', 
+				( grep (/playlistlength:/,
+					( split "\n", &mpd('status') ) )
+				)[0]
+			)[1];
+}
 sub debug {
     return unless $ARGV{debug};
     my ($msg) = @_;
@@ -124,5 +159,21 @@ Default is 5 seconds.
 =for Euclid:
 	sleep.type:			number > 0
 	sleep.default:	5
+
+=item -p[ort] <port>
+
+Port MPD is listening on. Defaults to 6600.
+
+=for Euclid:
+	port.type:		integer > 0;
+	port.default:	6600
+
+=item -h[ost] <host>
+
+Host to connect to. Default is localhost.
+
+=for Euclid:
+	host.type:		string
+	host.default:	'localhost'
 
 =cut
