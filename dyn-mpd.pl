@@ -5,20 +5,21 @@ use warnings;
 use Getopt::Euclid qw[ :minimal_keys ];
 use IO::Socket::INET;
 use Proc::Daemon;
-use Encode;
 
 # Infinite loop with daemon
 # This method does not handle the playlist,
 # only adds to it. Thus, consume mode is needed
 my $pid = -1;
 my $sock = 0;
+my %status;
 
 sub mkSock;
 sub mpd;
+sub mkassoc;
 sub playlist;
 sub listall;
 sub add;
-sub plen;
+sub nowPlaying;
 sub debug;
 $SIG{CHLD} = sub {
 	debug("Child reported for reapin! (pid var is $pid)");
@@ -36,15 +37,24 @@ debug("Beginning Loop");
 while (1) {
 	# If we have a child process running, don't fork another, that is silly
 	next if ($pid > 1 && kill 0 => $pid);
-	# Did our socket time out?
+	# Did our socket time out or get closed by the child?
 	$sock = &mkSock unless $sock;
-	my $p = &plen;
-	debug("Checking Playlist: $p");
+	# Setup our status hash for this iteration
+	%status = &mkassoc('status');
+	debug("Checking Playlist: " . $status{playlistlength});
+
+	# Unrelated to this script's primary purpose but for efficiency's sake I am
+	# combining these two goals into a single process. This is for conky:
+	open FH, '>', '/tmp/mpd-playing' or die "I/O ERR: $!\n";
+	print FH &nowPlaying;
+	close FH;
+	
 	# Once playlist gets below certain threshold, fork child for heavy lifting:
-	$pid = fork if($p < $ARGV{thresh});
+	$pid = fork if($status{playlistlength} < $ARGV{thresh});
 	next if ($pid || $pid == -1);
 	# Now we are the child
 	debug("Child Forked! $pid");
+	use Encode;
 	my @library = &listall;
 	my @playlist = &playlist;
 	
@@ -52,12 +62,17 @@ while (1) {
 	PICK:
 	for (0..$ARGV{add}) {
 		my $pick = encode('utf-8', $library[rand @library]);
+
 		# Don't add entries that are already queued
 		for (@playlist) {
 			redo PICK if($pick eq $_);
 		}
 		# Add to playlist
-		&add(decode('utf-8', $pick));
+		&add(decode('utf-8', $pick)) or redo PICK;
+		# Append pick to playlist array so it is also checked since
+		# random sometimes picks the same song twice
+		$playlist[++$#playlist] = $pick;
+
 		debug("Added $pick");
 	}
 	
@@ -86,33 +101,49 @@ sub mkSock {
 sub mpd {
 	my $cmd	= shift;
 	print $sock "$cmd\n";
-	my $reply;
+	my @reply;
 	while(<$sock>) {
+		return 0 if (/^ACK\s/);
 		last if (/^OK$/);
 		next if (/^directory:/);
-		$reply .= $_;
+		$reply[++$#reply] = $_;
 	}
-	return $reply || 1;
+	chomp @reply;
+	return (@reply > 1) ? @reply : pop @reply || 1;
+}
+sub mkassoc {
+	my $cmd = shift;
+	my %hash =	map { my @r = split /:\s/; lc($r[0]) => $r[1] || '' }
+				&mpd($cmd);
+	return %hash;
 }
 sub playlist {
-	return (map { (split ':')[-1] } (split "\n", &mpd('playlist')));
+	return (map { (split ':')[-1] } &mpd('playlist'));
 }
 sub listall {
 	# How do we get regex to *return* string as shown with 'r' modifier :(
-	return (map { (s/file:\s//) ? $_ : () } (split "\n", &mpd('listall')));
+	return (map { (s/file:\s//) ? $_ : () } &mpd('listall'));
 }
 sub add {
 	my $file = shift;
 	my $add = &mpd('add "' . $file . '"');
 	return $add;
 }
-sub plen {
-	return	(split ': ', 
-				( grep (/playlistlength:/,
-					( split "\n", &mpd('status') ) )
-				)[0]
-			)[1];
+sub nowPlaying {
+	my %stats = &mkassoc('currentsong');
+	my ($c, $t) = split ':', $status{time};
+	my $percent = sprintf "%.0f", ( $c * 100 / $t );
+	my $out;
+	if($stats{title}) {
+		$out = "<fc=green>".$stats{title}."</fc>";
+		$out .= " - <fc=yellow>".$stats{artist}."</fc>" if($stats{artist});
+	} else {
+		$out = "<fc=red>".$stats{file}."</fc>";
+	}
+	$out .= " [<fc=blue>$percent%</fc>]";
+	return $out;
 }
+
 sub debug {
     return unless $ARGV{debug};
     my ($msg) = @_;

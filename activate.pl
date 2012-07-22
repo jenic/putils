@@ -67,7 +67,7 @@ system 'purple-remote',
 							) . ')';
 sleep 5; # Give some time to get out of room
 system 'mpc', '-q', 'pause';
-system 'killall', '-STOP', '-r', 'dyn-mpd' and warn "Couldn't Pause dyn-mpd";
+#system 'killall', '-STOP', '-r', 'dyn-mpd' and warn "Couldn't Pause dyn-mpd";
 
 system 'motion'; # this now daemonizes
 sleep 2; # give time for motion to start
@@ -131,7 +131,7 @@ $SIG{INT} = sub {
 	}
 	my $stopTime = time;
 	system 'purple-remote','setstatus?status=available&message=';
-	system 'killall', '-CONT', '-r', 'dyn-mpd' and warn "Couldn't resume dyn-mpd";
+	#system 'killall', '-CONT', '-r', 'dyn-mpd' and warn "Couldn't resume dyn-mpd";
 	system 'mpc', '-q', 'toggle';
 	&checkforFiles(0); # Handle any stray .raw files
 
