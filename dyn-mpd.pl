@@ -12,6 +12,7 @@ use Proc::Daemon;
 my $pid = -1;
 my $sock = 0;
 my %status;
+my @blist;
 
 sub mkSock;
 sub mpd;
@@ -33,15 +34,24 @@ if($ARGV{debug}) {
 	Proc::Daemon::Init;
 }
 
+# Load Blacklist if it exists
+if(-e $ENV{HOME} . "/.mpd/dyn-blacklst") {
+	open FH, $ENV{HOME} . '/.mpd/dyn-blacklst' or die "$!\n";
+	@blist = <FH>;
+	chomp @blist;
+	close FH;
+	debug("Blacklist Loaded: " . @blist);
+}
+
 debug("Beginning Loop");
 while (1) {
-	# If we have a child process running, don't fork another, that is silly
-	next if ($pid > 1 && kill 0 => $pid);
 	# Did our socket time out or get closed by the child?
 	$sock = &mkSock unless $sock;
 	# Setup our status hash for this iteration
 	%status = &mkassoc('status');
-	debug("Checking Playlist: " . $status{playlistlength});
+	
+	# Don't bother if we aren't "Playing"
+	next unless ($status{state} eq "play");
 
 	# Unrelated to this script's primary purpose but for efficiency's sake I am
 	# combining these two goals into a single process. This is for conky:
@@ -49,7 +59,11 @@ while (1) {
 	print FH &nowPlaying;
 	close FH;
 	
+	# If we have a child process running, don't fork another, that is silly
+	next if ($pid > 1 && kill 0 => $pid);
+
 	# Once playlist gets below certain threshold, fork child for heavy lifting:
+	debug("Checking Playlist: " . $status{playlistlength});
 	$pid = fork if($status{playlistlength} < $ARGV{thresh});
 	next if ($pid || $pid == -1);
 	# Now we are the child
@@ -63,6 +77,10 @@ while (1) {
 	for (0..$ARGV{add}) {
 		my $pick = encode('utf-8', $library[rand @library]);
 
+		# Consult the Blacklist
+		for (@blist) {
+			redo PICK if ($pick =~ /$_/i);
+		}
 		# Don't add entries that are already queued
 		for (@playlist) {
 			redo PICK if($pick eq $_);
