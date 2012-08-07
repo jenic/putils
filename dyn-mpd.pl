@@ -69,19 +69,36 @@ while (1) {
 	# Now we are the child
 	debug("Child Forked! $pid");
 	use Encode;
+	use Storable;
 	my @library = &listall;
 	my @playlist = &playlist;
+	my $pickref;
+
+	# Check for History file and load it
+	if (-e $ARGV{Histfile}) {
+		$pickref = retrieve($ARGV{Histfile});
+	}
+	my @picks = (defined $pickref) ? @$pickref : ();
 	
 	# Generate appropriate amount via rand @library
 	PICK:
 	for (0..$ARGV{add}) {
-		my $pick = encode('utf-8', $library[rand @library]);
+		my $id = rand @library;
+		# Check history array for this ID
+		if (grep(/$id/, @picks)) {
+			debug("$id found in @picks, redoing");
+			redo PICK;
+		}
+
+		my $pick = encode('utf-8', $library[$id]);
 
 		# Consult the Blacklist
 		for (@blist) {
 			redo PICK if ($pick =~ /$_/i);
 		}
 		# Don't add entries that are already queued
+		# This somewhat overlaps history feature except this also takes into
+		# account songs added manually by the user
 		for (@playlist) {
 			redo PICK if($pick eq $_);
 		}
@@ -89,11 +106,19 @@ while (1) {
 		&add(decode('utf-8', $pick)) or redo PICK;
 		# Append pick to playlist array so it is also checked since
 		# random sometimes picks the same song twice
-		$playlist[++$#playlist] = $pick;
+		# UPDATE: history replaces this need
+		#$playlist[++$#playlist] = $pick;
+		
+		# Trials are over, add the worthy song to history and prune previous
+		# entries if necessary
+		shift @picks if (@picks > $ARGV{count});
+		push @picks, $id;
 
 		debug("Added $pick");
 	}
 	
+	# Save our history array to disk
+	store(\@picks, $ARGV{Histfile});
 	# End child, return to infinite loop
 	exit;
 } continue {
@@ -245,5 +270,21 @@ Host to connect to. Default is localhost.
 =for Euclid:
 	host.type:		string
 	host.default:	'localhost'
+
+=item -H[istfile] <histfile>
+
+Location of History file
+
+=for Euclid:
+	histfile.type:		string
+	histfile.default:	'/home/jenic/.mpd/dyn-hist'
+
+=item -c[ount] <count>
+
+Number of songs to remember in history
+
+=for Euclid:
+	count.type:		integer > 0
+	count.default:	20
 
 =cut
