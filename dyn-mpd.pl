@@ -54,7 +54,7 @@ while (1) {
 	next unless ($status{state} eq "play");
 
 	# Unrelated to this script's primary purpose but for efficiency's sake I am
-	# combining these two goals into a single process. This is for conky:
+	# combining these two goals into a single process. This is for xmobar:
 	open FH, '>', '/tmp/mpd-playing' or die "I/O ERR: $!\n";
 	print FH &nowPlaying;
 	close FH;
@@ -83,10 +83,10 @@ while (1) {
 	# Generate appropriate amount via rand @library
 	PICK:
 	for (0..$ARGV{add}) {
-		my $id = rand @library;
+		my $id = sprintf "%i", rand @library;
 		# Check history array for this ID
 		if (grep(/$id/, @picks)) {
-			debug("$id found in @picks, redoing");
+			debug("[HIST] $id found in @picks, redoing");
 			redo PICK;
 		}
 
@@ -94,20 +94,25 @@ while (1) {
 
 		# Consult the Blacklist
 		for (@blist) {
-			redo PICK if ($pick =~ /$_/i);
+			if ($pick =~ /$_/i) {
+				debug("[BLACKLIST] $pick matched $_, redoing");
+				redo PICK;
+			}
 		}
 		# Don't add entries that are already queued
 		# This somewhat overlaps history feature except this also takes into
 		# account songs added manually by the user
 		for (@playlist) {
-			redo PICK if($pick eq $_);
+			if ($pick eq $_) {
+				debug("[PL] $pick is a DUP, redoing pick");
+				redo PICK;
+			}
 		}
 		# Add to playlist
 		&add(decode('utf-8', $pick)) or redo PICK;
 		# Append pick to playlist array so it is also checked since
 		# random sometimes picks the same song twice
-		# UPDATE: history replaces this need
-		#$playlist[++$#playlist] = $pick;
+		$playlist[++$#playlist] = $pick;
 		
 		# Trials are over, add the worthy song to history and prune previous
 		# entries if necessary
@@ -199,7 +204,7 @@ __END__
 
 =head1 USAGE
 
-    dyn-mpd [options]
+dyn-mpd [options]
 
 =head1 DESCRIPTION
 
@@ -221,7 +226,7 @@ above the defined threshold.
 
 Switchy dohickeys
 
-=over 4
+=over
 
 =item -d[ebug]
 
@@ -286,5 +291,7 @@ Number of songs to remember in history
 =for Euclid:
 	count.type:		integer > 0
 	count.default:	20
+
+=back
 
 =cut
