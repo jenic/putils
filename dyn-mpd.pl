@@ -85,7 +85,7 @@ while (1) {
 	for (0..$ARGV{add}) {
 		my $id = sprintf "%i", rand @library;
 		# Check history array for this ID
-		if (grep(/$id/, @picks)) {
+		if (grep {($_ == $id)} @picks) {
 			debug("[HIST] $id found in @picks, redoing");
 			redo PICK;
 		}
