@@ -6,6 +6,7 @@ use Getopt::Euclid qw[ :minimal_keys ];
 use IO::Socket::INET;
 use Proc::Daemon;
 
+
 # Infinite loop with daemon
 # This method does not handle the playlist,
 # only adds to it. Thus, consume mode is needed
@@ -35,8 +36,8 @@ if($ARGV{debug}) {
 }
 
 # Load Blacklist if it exists
-if(-e $ENV{HOME} . "/.mpd/dyn-blacklst") {
-	open FH, $ENV{HOME} . '/.mpd/dyn-blacklst' or die "$!\n";
+if(-e $ARGV{blist}) {
+	open FH, $ARGV{blist} or die "$!\n";
 	@blist = <FH>;
 	chomp @blist;
 	close FH;
@@ -116,14 +117,14 @@ while (1) {
 		
 		# Trials are over, add the worthy song to history and prune previous
 		# entries if necessary
+		debug("Added $pick");
+		next unless ($ARGV{count} > 0);
 		shift @picks if (@picks > $ARGV{count});
 		push @picks, $id;
-
-		debug("Added $pick");
 	}
 	
 	# Save our history array to disk
-	store(\@picks, $ARGV{Histfile});
+	store(\@picks, $ARGV{Histfile}) if ($ARGV{count} > 0);
 	# End child, return to infinite loop
 	exit;
 } continue {
@@ -281,8 +282,8 @@ Host to connect to. Default is localhost.
 Location of History file
 
 =for Euclid:
-	histfile.type:		string
-	histfile.default:	'/home/jenic/.mpd/dyn-hist'
+	histfile.type:		readable
+	histfile.default:	$ENV{HOME}.'/.mpd/dyn-hist'
 
 =item -c[ount] <count>
 
@@ -291,6 +292,14 @@ Number of songs to remember in history
 =for Euclid:
 	count.type:		integer > 0
 	count.default:	20
+
+=item -b[list] <blist>
+
+Location of Blacklist file
+
+=for Euclid:
+	blist.type:		string
+	blist.default:	$ENV{HOME}.'/.mpd/dyn-blacklst'
 
 =back
 
