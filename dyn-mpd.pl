@@ -216,10 +216,9 @@ system and lack of a .deb for his outdated system. Additionally, this version
 seeks to to be more minimal in it's resource needs and to provide added
 functionality.
 
-Note that this version requires the C++ MPD tools in the "MPC" package and
-that this version does _not_ manage the playlist. Without consume mode enabled
-in MPD this daemon will not interfere with your playlist as long as it is
-above the defined threshold.
+Note that this version does _not_ manage the playlist. Without consume mode
+enabled in MPD this daemon will not interfere with your playlist as long as it
+is above the defined threshold.
 
 =head1 OPTIONS
 
