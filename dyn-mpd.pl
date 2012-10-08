@@ -23,29 +23,36 @@ sub listall;
 sub add;
 sub nowPlaying;
 sub debug;
+sub upBlist;
+
 $SIG{CHLD} = sub {
 	debug("Child reported for reapin! (pid var is $pid)");
 	waitpid($pid || -1, 0);
 };
 END { $sock->close() if $sock; }
 
-if($ARGV{debug}) {
+if ($ARGV{debug}) {
 	print "$_ => " . $ARGV{$_} . "\n" for(keys %ARGV);
 } else {
 	Proc::Daemon::Init;
 }
 
 # Load Blacklist if it exists
-if(-e $ARGV{blist}) {
-	open FH, $ARGV{blist} or die "$!\n";
-	@blist = <FH>;
-	chomp @blist;
-	close FH;
-	debug("Blacklist Loaded: " . @blist);
-}
+my $blts = &upBlist if (-e $ARGV{blist});
 
 debug("Beginning Loop");
 while (1) {
+	# Update our blacklist if it has changed
+	if (defined $blts) {
+		debug("Checking for new Blist");
+		my $nbl = (stat($ARGV{blist}))[9];
+		if ($nbl > $blts) {
+			debug("BList has changed! ($blts -> $nbl)");
+			&upBlist;
+			$blts = $nbl;
+		}
+	}
+
 	# Did our socket time out or get closed by the child?
 	$sock = &mkSock unless $sock;
 	# Setup our status hash for this iteration
@@ -65,7 +72,7 @@ while (1) {
 
 	# Once playlist gets below certain threshold, fork child for heavy lifting:
 	debug("Checking Playlist: " . $status{playlistlength});
-	$pid = fork if($status{playlistlength} < $ARGV{thresh});
+	$pid = fork if ($status{playlistlength} < $ARGV{thresh});
 	next if ($pid || $pid == -1);
 	# Now we are the child
 	debug("Child Forked! $pid");
@@ -76,10 +83,14 @@ while (1) {
 	my $pickref;
 
 	# Check for History file and load it
+	my @picks;
 	if (-e $ARGV{Histfile}) {
 		$pickref = retrieve($ARGV{Histfile});
+		@picks = @$pickref;
+		debug("History file loaded: " . @picks);
+	} else {
+		@picks = ();
 	}
-	my @picks = (defined $pickref) ? @$pickref : ();
 	
 	# Generate appropriate amount via rand @library
 	PICK:
@@ -183,9 +194,9 @@ sub nowPlaying {
 	my ($c, $t) = split ':', $status{time};
 	my $percent = sprintf "%.0f", ( $c * 100 / $t );
 	my $out;
-	if($stats{title}) {
+	if ($stats{title}) {
 		$out = "<fc=green>".$stats{title}."</fc>";
-		$out .= " - <fc=yellow>".$stats{artist}."</fc>" if($stats{artist});
+		$out .= " - <fc=yellow>".$stats{artist}."</fc>" if ($stats{artist});
 	} else {
 		$out = "<fc=red>".$stats{file}."</fc>";
 	}
@@ -199,6 +210,16 @@ sub debug {
     my ($s,$m,$h) = ( localtime(time) )[0,1,2,3,6];
     my $date = sprintf "%02d:%02d:%02d", $h, $m, $s;
     warn "$date $msg";
+}
+
+sub upBlist {
+	open FH, $ARGV{blist} or die "$!\n";
+	@blist = <FH>;
+	chomp @blist;
+	close FH;
+	my $blts = (stat($ARGV{blist}))[9];
+	debug("Blacklist $blts Loaded: " . @blist);
+	return $blts;
 }
 
 __END__
