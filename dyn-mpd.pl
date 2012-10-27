@@ -198,10 +198,10 @@ sub nowPlaying {
 	my $percent = sprintf "%.0f", ( $c * 100 / $t );
 	my $out;
 	if ($stats{title}) {
-		$out = "<fc=green>".$stats{title}."</fc>";
-		$out .= " - <fc=yellow>".$stats{artist}."</fc>" if ($stats{artist});
+		$out = "<fc=green>".substr($stats{title},0,25)."</fc>";
+		$out .= " - <fc=yellow>".substr($stats{artist},0,20)."</fc>" if ($stats{artist});
 	} else {
-		$out = "<fc=red>".$stats{file}."</fc>";
+		$out = "<fc=red>".substr($stats{file},0,45)."</fc>";
 	}
 	$out .= " [<fc=blue>$percent%</fc>]";
 	return $out;
