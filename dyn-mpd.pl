@@ -6,7 +6,6 @@ use Getopt::Euclid qw[ :minimal_keys ];
 use IO::Socket::INET;
 use Proc::Daemon;
 
-
 # Infinite loop with daemon
 # This method does not handle the playlist,
 # only adds to it. Thus, consume mode is needed
@@ -171,12 +170,16 @@ sub mpd {
 	chomp @reply;
 	return (@reply > 1) ? @reply : pop @reply || 1;
 }
+
+# Makes hash (associative) of a &mpd command
 sub mkassoc {
 	my $cmd = shift;
 	my %hash =	map { my @r = split /:\s/; lc($r[0]) => $r[1] || '' }
 				&mpd($cmd);
 	return %hash;
 }
+
+# Specific subfunctions of &mpd
 sub playlist {
 	return (map { (split ':')[-1] } &mpd('playlist'));
 }
@@ -204,6 +207,7 @@ sub nowPlaying {
 	return $out;
 }
 
+# Other Subs
 sub debug {
     return unless $ARGV{debug};
     my ($msg) = @_;
@@ -211,7 +215,6 @@ sub debug {
     my $date = sprintf "%02d:%02d:%02d", $h, $m, $s;
     warn "$date $msg";
 }
-
 sub upBlist {
 	open FH, $ARGV{blist} or die "$!\n";
 	@blist = <FH>;

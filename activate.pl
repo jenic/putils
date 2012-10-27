@@ -29,14 +29,18 @@ sub formatTime;
 sub logmsg;
 sub stateCheck;
 
+# This block needs to be redone in a more programatic way and less retarded.
+# I'm just so lazy.
 $_ = `pactl stat`;
 $\ = "\n";
 $, = "\n";
 unless (/^Default\sSource:\s$micsrc$/m) {
 	warn "Attempting to set PA: Source Sink to $micsrc\n";
-	system "pacmd set-default-source $micsrc > /dev/null 2>&1";
+	system "pafix 1";
 	$_ = `pactl stat`;
-	die "Failed to set Input Source!" unless (/^Default\sSource:\s$micsrc$/m);
+	system "pafix" unless (/^Default\sSource:\s$micsrc$/m);
+	$_ = `pactl stat`;
+	die "Failed to set Sink!\n" unless (/^Default\sSource:\s$micsrc$/m);
 	$bits += 1;
 }
 my $amsg = ($ARGV[0]) ? join ' ', @ARGV : "Out.";
