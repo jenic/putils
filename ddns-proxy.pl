@@ -24,7 +24,6 @@ my $TTY;
 }
 
 my $eol = "\015\012";
-my $remote = shift || "localhost";
 my $port = shift || 6881;
 die "No port specified" unless ($port =~ /^ \d+ $/x);
 
