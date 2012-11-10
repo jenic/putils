@@ -9,19 +9,32 @@ sub mkassoc;
 
 # Service to use
 my $domain = "https://dynamicdns.park-your-domain.com/update?";
-
-# Determine Running Environment
 my $TTY;
-{ # Try to free this memory asap
-	use POSIX qw(getpgrp tcgetpgrp);
-	if(!open(TTY, "/dev/tty")) {
-		$TTY = 0;
-	} else {
-		my $tpgrp = tcgetpgrp(fileno(*TTY));
-		my $pgrp = getpgrp();
-		$TTY = ($tpgrp == $pgrp) ? 1 : 0;
+
+sub daemonize {
+	use POSIX;
+	POSIX::setsid or die "Setsid: $!\n";
+	my $pid = fork();
+	if ($pid < 0) {
+		die "Fork: $!\n";
+	} elsif ($pid) {
+		# Write child to pid file and then exit
+		open FH, '>', "/tmp/ddns-proxy.pid" or die "parent: $!\n";
+		print FH $pid;
+		close FH;
+		exit 0;
 	}
+	chdir "/";
+	umask 0;
+	POSIX::close $_
+		foreach (0 .. (POSIX::sysconf (&POSIX::_SC_OPEN_MAX) || 1024));
+	open (STDIN, "</dev/null");
+	open (STDOUT, ">/dev/null");
+	open (STDERR, ">&STDOUT");
 }
+
+# Daemonize
+if (@ARGV) { $TTY = 1; } else { &daemonize; }
 
 my $eol = "\015\012";
 my $port = shift || 6881;
