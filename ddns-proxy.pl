@@ -5,7 +5,6 @@ use Net::hostent;
 
 BEGIN { $ENV{PATH} = "/usr/bin:/bin" }
 sub debug;
-sub mkassoc;
 
 # Service to use
 my $domain = "https://dynamicdns.park-your-domain.com/update?";
