@@ -138,8 +138,9 @@ while (1) {
 	# End child, return to infinite loop
 	exit;
 } continue {
-	debug("Sleeping for " . $ARGV{sleep});
-	sleep $ARGV{sleep};
+	my $s = $ARGV{sleep} + (($status{playlistlength}-$ARGV{thresh})*.5);
+	debug("Sleeping for " . $s);
+	sleep $s;
 }
 
 exit; # Lol wat you doin here?
