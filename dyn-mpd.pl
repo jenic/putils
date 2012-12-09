@@ -41,17 +41,6 @@ my $blts = &upBlist if (-e $ARGV{blist});
 
 debug("Beginning Loop");
 while (1) {
-	# Update our blacklist if it has changed
-	if (defined $blts) {
-		debug("Checking for new Blist");
-		my $nbl = (stat($ARGV{blist}))[9];
-		if ($nbl > $blts) {
-			debug("BList has changed! ($blts -> $nbl)");
-			&upBlist;
-			$blts = $nbl;
-		}
-	}
-
 	# Did our socket time out or get closed by the child?
 	$sock = &mkSock unless $sock;
 	# Setup our status hash for this iteration
@@ -139,8 +128,19 @@ while (1) {
 	exit;
 } continue {
 	my $s = $ARGV{sleep} + (($status{playlistlength}-$ARGV{thresh})*.5);
-	debug("Sleeping for " . $s);
+	debug("Sleeping for $s");
 	sleep $s;
+	
+	# Update our blacklist if it has changed
+	if (defined $blts) {
+		debug("Checking for new Blist");
+		my $nbl = (stat($ARGV{blist}))[9];
+		if ($nbl > $blts) {
+			debug("BList has changed! ($blts -> $nbl)");
+			&upBlist;
+			$blts = $nbl;
+		}
+	}
 }
 
 exit; # Lol wat you doin here?
@@ -264,7 +264,7 @@ Items to keep in playlist until appending new items. Somewhat equivalent to
 Audio::MPD's -old functionality. Defaults to 10.
 
 =for Euclid:
-	thresh.type:		integer > 0
+	thresh.type:	integer > 0
 	thresh.default:	10
 
 =item -a[dd] <add>
@@ -273,7 +273,7 @@ Audio::MPD's -old functionality. Defaults to 10.
 Number of items to add per loop: Defaults to 10.
 
 =for Euclid:
-	add.type:			integer > 0
+	add.type:	integer > 0
 	add.default:	10
 
 =item -s[leep] <sleep>
@@ -282,7 +282,7 @@ Time spent sleeping (in seconds) before checking playlist.
 Default is 5 seconds.
 
 =for Euclid:
-	sleep.type:			number > 0
+	sleep.type:	number > 0
 	sleep.default:	5
 
 =item -p[ort] <port>
@@ -290,7 +290,7 @@ Default is 5 seconds.
 Port MPD is listening on. Defaults to 6600.
 
 =for Euclid:
-	port.type:		integer > 0;
+	port.type:	integer > 0;
 	port.default:	6600
 
 =item -h[ost] <host>
@@ -298,7 +298,7 @@ Port MPD is listening on. Defaults to 6600.
 Host to connect to. Default is localhost.
 
 =for Euclid:
-	host.type:		string
+	host.type:	string
 	host.default:	'localhost'
 
 =item -H[istfile] <histfile>
@@ -314,7 +314,7 @@ Location of History file
 Number of songs to remember in history
 
 =for Euclid:
-	count.type:		integer > 0
+	count.type:	integer > 0
 	count.default:	20
 
 =item -b[list] <blist>
@@ -322,7 +322,7 @@ Number of songs to remember in history
 Location of Blacklist file
 
 =for Euclid:
-	blist.type:		string
+	blist.type:	string
 	blist.default:	$ENV{HOME}.'/.mpd/dyn-blacklst'
 
 =back
