@@ -41,13 +41,19 @@ my $blts = &upBlist if (-e $ARGV{blist});
 
 debug("Beginning Loop");
 while (1) {
+	debug("New Loop: PID is $pid");
 	# Did our socket time out or get closed by the child?
 	$sock = &mkSock unless $sock;
 	# Setup our status hash for this iteration
 	%status = &mkassoc('status');
+	debug("Dumping status hash:");
+	print "\t$_ -> " . $status{$_} . "\n" for (keys %status);
 	
+	# 0 length playlist causes way too many problems
+	die "No Playlist" if !$status{playlistlength};
+
 	# Don't bother if we aren't "Playing"
-	next unless ($status{state} eq "play");
+	next unless (defined $status{state} && $status{state} eq "play");
 
 	# Unrelated to this script's primary purpose but for efficiency's sake I am
 	# combining these two goals into a single process. This is for xmobar:
@@ -56,14 +62,15 @@ while (1) {
 	close FH;
 	
 	# If we have a child process running, don't fork another, that is silly
-	next if ($pid > 1 && kill 0 => $pid);
+	debug("$pid still running") and sleep 2 and next if ($pid > 1 && kill 0 => $pid);
 
 	# Once playlist gets below certain threshold, fork child for heavy lifting:
 	debug("Checking Playlist: " . $status{playlistlength});
 	$pid = fork if ($status{playlistlength} < $ARGV{thresh});
+	
 	next if ($pid || $pid == -1);
 	# Now we are the child
-	debug("Child Forked! $pid");
+	debug("Child Forked!");
 	use Encode;
 	use Storable;
 	my @library = &listall;
@@ -127,7 +134,8 @@ while (1) {
 	# End child, return to infinite loop
 	exit;
 } continue {
-	my $s = $ARGV{sleep} + (($status{playlistlength}-$ARGV{thresh})*.5);
+	my $l = $status{playlistlength} || 0;
+	my $s = $ARGV{sleep} + ((($l + 1)-$ARGV{thresh})*.5);
 	debug("Sleeping for $s");
 	sleep $s;
 	
@@ -168,15 +176,15 @@ sub mpd {
 		$reply[++$#reply] = $_;
 	}
 	chomp @reply;
+	# If nothing to return, must return 1
+	# or all hell breaks loose
 	return (@reply > 1) ? @reply : pop @reply || 1;
 }
 
 # Makes hash (associative) of a &mpd command
 sub mkassoc {
-	my $cmd = shift;
-	my %hash =	map { my @r = split /:\s/; lc($r[0]) => $r[1] || '' }
-				&mpd($cmd);
-	return %hash;
+	my @cmd = &mpd(shift);
+	return map { my @r = split /:\s/; lc($r[0]) => $r[1] // '' } @cmd;
 }
 
 # Specific subfunctions of &mpd
@@ -194,6 +202,7 @@ sub add {
 }
 sub nowPlaying {
 	my %stats = &mkassoc('currentsong');
+	return "<fc=red>No Playlist</fc>" unless defined $stats{time};
 	my ($c, $t) = split ':', $status{time};
 	my $percent = sprintf "%.0f", ( $c * 100 / $t );
 	my $out;
@@ -213,7 +222,7 @@ sub debug {
     my ($msg) = @_;
     my ($s,$m,$h) = ( localtime(time) )[0,1,2,3,6];
     my $date = sprintf "%02d:%02d:%02d", $h, $m, $s;
-    warn "$date $msg";
+    warn "$date $msg", "\n";
 }
 sub upBlist {
 	open FH, $ARGV{blist} or die "$!\n";
@@ -313,7 +322,7 @@ Location of History file
 Number of songs to remember in history
 
 =for Euclid:
-	count.type:	integer > 0
+	count.type:	integer > -1
 	count.default:	20
 
 =item -b[list] <blist>
