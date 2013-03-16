@@ -23,12 +23,17 @@ sub add;
 sub nowPlaying;
 sub debug;
 sub upBlist;
+sub isMatch;
 
 $SIG{CHLD} = sub {
 	debug("Child reported for reapin! (pid var is $pid)");
 	waitpid($pid || -1, 0);
 };
 END { $sock->close() if $sock; }
+my $_cmp = sub {
+	my ($name, $stack) = @_;
+	return ($name cmp lc($stack));
+};
 
 if ($ARGV{debug}) {
 	print "$_ => " . $ARGV{$_} . "\n" for(keys %ARGV);
@@ -74,7 +79,8 @@ while (1) {
 	use Encode;
 	use Storable;
 	my @library = &listall;
-	my @playlist = &playlist;
+	# Binary search requires a sorted haystack
+	my @playlist = sort { lc($a) cmp lc($b) } &playlist;
 	my $pickref;
 
 	# Check for History file and load it
@@ -92,7 +98,7 @@ while (1) {
 	for (0..$ARGV{add}) {
 		my $id = sprintf "%i", rand @library;
 		# Check history array for this ID
-		if (grep {($_ == $id)} @picks) {
+		if(&isMatch($id, \@picks, sub { return ($_[0] <=> $_[1]); })) {
 			debug("[HIST] $id found in @picks, redoing");
 			redo PICK;
 		}
@@ -109,12 +115,11 @@ while (1) {
 		# Don't add entries that are already queued
 		# This somewhat overlaps history feature except this also takes into
 		# account songs added manually by the user
-		for (@playlist) {
-			if ($pick eq $_) {
-				debug("[PL] $pick is a DUP, redoing pick");
-				redo PICK;
-			}
+		if(&isMatch($pick, \@playlist)) {
+			debug("[PL] $pick is a DUP, redoing pick");
+			redo PICK;
 		}
+		
 		# Add to playlist
 		&add(decode('utf-8', $pick)) or redo PICK;
 		# Append pick to playlist array so it is also checked since
@@ -125,12 +130,17 @@ while (1) {
 		# entries if necessary
 		debug("Added $pick");
 		next unless ($ARGV{count} > 0);
-		shift @picks if (@picks > $ARGV{count});
+		# TODO: Need to subtract difference, not just 1
+		# Doesn't shrink history if -c is given a smaller value
+		shift @picks if (@picks >= $ARGV{count});
 		push @picks, $id;
 	}
 	
+	# Sort our array before storing
+	@picks = sort { $a <=> $b } @picks;
 	# Save our history array to disk
 	store(\@picks, $ARGV{Histfile}) if ($ARGV{count} > 0);
+
 	# End child, return to infinite loop
 	exit;
 } continue {
@@ -224,6 +234,7 @@ sub debug {
     my $date = sprintf "%02d:%02d:%02d", $h, $m, $s;
     warn "$date $msg", "\n";
 }
+
 sub upBlist {
 	open FH, $ARGV{blist} or die "$!\n";
 	@blist = <FH>;
@@ -232,6 +243,38 @@ sub upBlist {
 	my $blts = (stat($ARGV{blist}))[9];
 	debug("Blacklist $blts Loaded: " . @blist);
 	return $blts;
+}
+
+sub isMatch {
+	my ($low, $mid, $high);
+	my ($name, $ref, $opt) = @_;
+	my @haystack = @$ref;
+	$low = 0;
+	$high = $#haystack;
+	$opt = $_cmp if(!$opt);
+	&debug("Binary search subroutine begins with needle $name");
+
+	while ($low <= $high) {
+		$mid = sprintf("%i", ($low + $high) / 2);
+		# Why chomp the whole array when we wont even look at half of it?
+		chomp $haystack[$mid];
+		# Capitals fuck with shit
+		my $cmp = $opt->($name, $haystack[$mid]);
+
+		&debug("low = $low, high = $high, mid = $mid, cmp = $cmp, $haystack[$mid]");
+
+		if($cmp < 0) {
+			$high = $mid - 1;
+		} elsif ($cmp > 0) {
+			$low = $mid + 1;
+		} else {
+			&debug("-- Match --");
+			return $mid; #Match
+		}
+	}
+	&debug("-- No Match --");
+	return 0; # No match
+
 }
 
 __END__
