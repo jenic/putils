@@ -32,7 +32,7 @@ $SIG{CHLD} = sub {
 END { $sock->close() if $sock; }
 my $_cmp = sub {
 	my ($name, $stack) = @_;
-	return ($name cmp lc($stack));
+	return (lc($name) cmp lc($stack));
 };
 
 if ($ARGV{debug}) {
@@ -55,7 +55,7 @@ while (1) {
 	print "\t$_ -> " . $status{$_} . "\n" for (keys %status);
 	
 	# 0 length playlist causes way too many problems
-	die "No Playlist" if !$status{playlistlength};
+	die "Playlist length is 0" if !$status{playlistlength};
 
 	# Don't bother if we aren't "Playing"
 	next unless (defined $status{state} && $status{state} eq "play");
@@ -67,6 +67,7 @@ while (1) {
 	close FH;
 	
 	# If we have a child process running, don't fork another, that is silly
+
 	debug("$pid still running") and sleep 2 and next if ($pid > 1 && kill 0 => $pid);
 
 	# Once playlist gets below certain threshold, fork child for heavy lifting:
@@ -86,9 +87,15 @@ while (1) {
 	# Check for History file and load it
 	my @picks;
 	if (-e $ARGV{Histfile}) {
+		# TODO: Need a "try catch" here
 		$pickref = retrieve($ARGV{Histfile});
-		@picks = @$pickref;
-		debug("History file loaded: " . @picks);
+		if(!$pickref) {
+			@picks = ();
+			debug("Failed to load History file! $!");
+		} else {
+			@picks = @$pickref;
+			debug("History file loaded: " . @picks);
+		}
 	} else {
 		@picks = ();
 	}
@@ -130,8 +137,6 @@ while (1) {
 		# entries if necessary
 		debug("Added $pick");
 		next unless ($ARGV{count} > 0);
-		# TODO: Need to subtract difference, not just 1
-		# Doesn't shrink history if -c is given a smaller value
 		shift @picks if (@picks >= $ARGV{count});
 		push @picks, $id;
 	}
@@ -146,6 +151,7 @@ while (1) {
 } continue {
 	my $l = $status{playlistlength} || 0;
 	my $s = $ARGV{sleep} + ((($l + 1)-$ARGV{thresh})*.5);
+	$s = $ARGV{sleepmax} if ($s > $ARGV{sleepmax});
 	debug("Sleeping for $s");
 	sleep $s;
 	
@@ -329,12 +335,23 @@ Number of items to add per loop: Defaults to 10.
 
 =item -s[leep] <sleep>
 
-Time spent sleeping (in seconds) before checking playlist.
+Base time spent sleeping (in seconds) before checking playlist. Actual sleep
+time increases based on threshold and playlist length:
+sleep + (((playlistLength + 1) - Threshold) * .5)
 Default is 5 seconds.
 
 =for Euclid:
 	sleep.type:	number > 0
 	sleep.default:	5
+
+=item -sleepmax <sleepmax>
+
+Maximum time daemon can sleep between loops.
+Default is 30 seconds.
+
+=for Euclid:
+	sleepmax.type:	number > 0
+	sleep.default:	30
 
 =item -p[ort] <port>
 
@@ -373,7 +390,7 @@ Number of songs to remember in history
 Location of Blacklist file
 
 =for Euclid:
-	blist.type:	string
+	blist.type:	readable
 	blist.default:	$ENV{HOME}.'/.mpd/dyn-blacklst'
 
 =back
