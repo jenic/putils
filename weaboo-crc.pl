@@ -16,8 +16,16 @@ for my $file ( @ARGV ) {
 	open FH, $file or die "Failed to open file: $!\n";
 	$crc = crc32($_, $crc) while (<FH>);
 	close FH;
+	
+	my $hex = sprintf "%.8X", $crc;
+	if ($file =~ /\[([A-f0-9]{8})\]/) {
+		printf "%s\t%s\n",
+			$hex,
+			(hex($hex) == hex($1)) ? "MATCH" : "FAIL";
+	} else {
+		print $hex, "\n";
+	}
 
-	printf "%.8X\n", $crc;
 } continue {
 	$crc = 0;
 }

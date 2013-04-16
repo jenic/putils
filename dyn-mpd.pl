@@ -350,8 +350,8 @@ Maximum time daemon can sleep between loops.
 Default is 30 seconds.
 
 =for Euclid:
-	sleepmax.type:	number > 0
-	sleep.default:	30
+	sleepmax.type:		number > 0
+	sleepmax.default:	30
 
 =item -p[ort] <port>
 
