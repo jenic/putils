@@ -36,7 +36,7 @@ my $_cmp = sub {
 };
 
 if ($ARGV{debug}) {
-	print "$_ => " . $ARGV{$_} . "\n" for(keys %ARGV);
+	warn "$_ => " . $ARGV{$_}, "\n" for(keys %ARGV);
 } else {
 	Proc::Daemon::Init;
 }
@@ -51,8 +51,10 @@ while (1) {
 	$sock = &mkSock unless $sock;
 	# Setup our status hash for this iteration
 	%status = &mkassoc('status');
-	debug("Dumping status hash:");
-	print "\t$_ -> " . $status{$_} . "\n" for (keys %status);
+	if($ARGV{debug}) {
+		debug("Dumping status hash:");
+		warn "\t$_ -> " . $status{$_}, "\n" for (keys %status);
+	}
 	
 	# 0 length playlist causes way too many problems
 	die "Playlist length is 0" if !$status{playlistlength};
@@ -60,17 +62,23 @@ while (1) {
 	# Don't bother if we aren't "Playing"
 	next unless (defined $status{state} && $status{state} eq "play");
 
-	# Unrelated to this script's primary purpose but for efficiency's sake I am
-	# combining these two goals into a single process. This is for xmobar:
+	# Unrelated to this script's primary purpose but for efficiency's sake
+	# I am combining these two goals into a single process. This is for
+	# xmobar:
 	open FH, '>', '/tmp/mpd-playing' or die "I/O ERR: $!\n";
 	print FH &nowPlaying;
 	close FH;
 	
-	# If we have a child process running, don't fork another, that is silly
+	# If we have a child process running, don't fork another, that is
+	# silly
 
-	debug("$pid still running") and sleep 2 and next if ($pid > 1 && kill 0 => $pid);
+	debug("$pid still running")
+		and sleep 2
+		and next
+		if ($pid > 1 && kill 0 => $pid);
 
-	# Once playlist gets below certain threshold, fork child for heavy lifting:
+	# Once playlist gets below certain threshold, fork child for heavy
+	# lifting:
 	debug("Checking Playlist: " . $status{playlistlength});
 	$pid = fork if ($status{playlistlength} < $ARGV{thresh});
 	
@@ -119,8 +127,8 @@ while (1) {
 				redo PICK;
 			}
 		}
-		# Don't add entries that are already queued
-		# This somewhat overlaps history feature except this also takes into
+		# Don't add entries that are already queued. This somewhat
+		# overlaps history feature except this also takes into
 		# account songs added manually by the user
 		if(&isMatch($pick, \@playlist)) {
 			debug("[PL] $pick is a DUP, redoing pick");
@@ -141,6 +149,7 @@ while (1) {
 		push @picks, $id;
 	}
 	
+	# TODO: Figure out how history stored duplicate numbers
 	# Sort our array before storing
 	@picks = sort { $a <=> $b } @picks;
 	# Save our history array to disk
@@ -374,7 +383,7 @@ Host to connect to. Default is localhost.
 Location of History file
 
 =for Euclid:
-	histfile.type:		readable
+	histfile.type:		writable
 	histfile.default:	$ENV{HOME}.'/.mpd/dyn-hist'
 
 =item -c[ount] <count>
