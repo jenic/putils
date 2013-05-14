@@ -47,14 +47,19 @@ my $blts = &upBlist if (-e $ARGV{blist});
 debug("Beginning Loop");
 while (1) {
 	debug("New Loop: PID is $pid");
-	# Did our socket time out or get closed by the child?
-	$sock = &mkSock unless $sock;
-	# Setup our status hash for this iteration
-	%status = &mkassoc('status');
-	if($ARGV{debug}) {
-		debug("Dumping status hash:");
-		warn "\t$_ -> " . $status{$_}, "\n" for (keys %status);
-	}
+	my $i = 0;
+	do {
+		# Did our socket time out or get closed by the child?
+		$sock = &mkSock unless ( $i < 5 && $sock);
+
+		# Setup our status hash for this iteration
+		%status = &mkassoc('status');
+		if($ARGV{debug}) {
+			debug("[Iteration: $i] Dumping status hash:");
+			warn "\t$_ -> " . $status{$_}, "\n" for (keys %status);
+		}
+		$i++;
+	} while ( !exists $status{playlistlength} && $i < 100 );
 	
 	# 0 length playlist causes way too many problems
 	die "Playlist length is 0" if !$status{playlistlength};
