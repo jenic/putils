@@ -4,7 +4,6 @@ use warnings;
 #use POSIX ":sys_wait_h";
 use Getopt::Euclid qw[ :minimal_keys ];
 use IO::Socket::INET;
-use Proc::Daemon;
 
 # Infinite loop with daemon
 # This method does not handle the playlist,
@@ -24,6 +23,7 @@ sub nowPlaying;
 sub debug;
 sub upBlist;
 sub isMatch;
+sub daemonize;
 
 $SIG{CHLD} = sub {
 	debug("Child reported for reapin! (pid var is $pid)");
@@ -38,7 +38,7 @@ my $_cmp = sub {
 if ($ARGV{debug}) {
 	warn "$_ => " . $ARGV{$_}, "\n" for(keys %ARGV);
 } else {
-	Proc::Daemon::Init;
+	&daemonize;
 }
 
 # Load Blacklist if it exists
@@ -50,19 +50,22 @@ while (1) {
 	my $i = 0;
 	do {
 		# Did our socket time out or get closed by the child?
-		$sock = &mkSock unless ( $i < 5 && $sock);
+		debug("Checking Socket [Iteration: $i]");
+		$sock = &mkSock unless ( $i < 5 && $sock && $sock->connected);
 
 		# Setup our status hash for this iteration
 		%status = &mkassoc('status');
-		if($ARGV{debug}) {
-			debug("[Iteration: $i] Dumping status hash:");
-			warn "\t$_ -> " . $status{$_}, "\n" for (keys %status);
-		}
+		
 		$i++;
-	} while ( !exists $status{playlistlength} && $i < 100 );
+	} while ( !exists $status{playlistlength} && $i < 20 );
 	
 	# 0 length playlist causes way too many problems
 	die "Playlist length is 0" if !$status{playlistlength};
+
+	if($ARGV{debug}) {
+		debug("Dumping status hash:");
+		warn "\t$_ -> " . $status{$_}, "\n" for (keys %status);
+	}
 
 	# Don't bother if we aren't "Playing"
 	next unless (defined $status{state} && $status{state} eq "play");
@@ -187,7 +190,7 @@ sub mkSock {
 		( PeerAddr	=> $ARGV{host}
 		, PeerPort	=> $ARGV{port}
 		, Proto		=> 'tcp'
-		, Timeout	=> ($ARGV{sleep} + 1)
+		, Timeout	=> $ARGV{sleepmax}
 		);
 	die "Unable to connect to mpd: $!\n" unless $sock;
 	debug("Socket Created!");
@@ -295,6 +298,28 @@ sub isMatch {
 	&debug("-- No Match --");
 	return 0; # No match
 
+}
+
+sub daemonize {
+	use POSIX;
+	POSIX::setsid or die "Setsid: $!\n";
+	my $pid = fork();
+	if ($pid < 0) {
+		die "Fork: $!\n";
+	} elsif ($pid) {
+		# Write child to pid file and then exit
+		#open FH, '>', "/tmp/ddns-proxy.pid" or die "parent: $!\n";
+		#print FH $pid;
+		#close FH;
+		exit 0;
+	}
+	chdir "/";
+	umask 0;
+	POSIX::close $_
+		foreach (0 .. (POSIX::sysconf (&POSIX::_SC_OPEN_MAX) || 1024));
+	open (STDIN, "</dev/null");
+	open (STDOUT, ">/dev/null");
+	open (STDERR, ">&STDOUT");
 }
 
 __END__
