@@ -11,7 +11,7 @@ my $proto = getprotobyname('tcp');
 $port = $1 if $port =~ /(\d+)/; # untaint port number
 
 # Personal Settings
-my $micsrc = "alsa_input.usb-045e_Microsoft_LifeChat_LX-3000-00-default.analog-mono";
+my $micsrc = "alsa_input.usb-045e_Microsoft_LifeChat_LX-3000-00-LX3000.analog-mono";
 my $eventdir = $ENV{HOME}.'/Ubuntu\ One/Webcam';
 my $activatelogdir = $ENV{HOME}."/.motion/logs";
 my $fm = 3; # File multiplier, 3 files per event
@@ -28,21 +28,14 @@ sub checkforFiles;
 sub formatTime;
 sub logmsg;
 sub stateCheck;
+sub pafix;
 
-# This block needs to be redone in a more programatic way and less retarded.
-# I'm just so lazy.
+# This block is a little better but still awkward
 $_ = `pactl stat`;
 $\ = "\n";
 $, = "\n";
-unless (/^Default\sSource:\s$micsrc$/m) {
-	warn "Attempting to set PA: Source Sink to $micsrc\n";
-	system "pafix 1";
-	$_ = `pactl stat`;
-	system "pafix" unless (/^Default\sSource:\s$micsrc$/m);
-	$_ = `pactl stat`;
-	die "Failed to set Sink!\n" unless (/^Default\sSource:\s$micsrc$/m);
-	$bits += 1;
-}
+&pafix unless (/^Default\sSource:\s$micsrc$/m);
+
 my $amsg = ($ARGV[0]) ? join ' ', @ARGV : "Out.";
 my $startTime = time;
 my ($sec,$min,$hour,$mday,$mon,$year) = gmtime($startTime);
@@ -121,6 +114,26 @@ sub stateCheck {
 			}
 		}
 		return $out || "System State Normal\n";
+}
+
+sub pafix {
+	my $i = shift || 0;
+
+	warn "[$i] Attempting to set PA: Source to $micsrc", "\n";
+	# Should never happen
+	return -1 if ($i > 3);
+
+	if ($i == 0) {
+		system "pafix", '1';
+	} elsif ($i == 1) {
+		system "pafix";
+	} else {
+		die "Failed to set Sink!\n";
+	}
+
+	local $_ = `pactl stat`;
+	pafix(++$i) unless (/^Default\sSource:$micsrc$/m);
+	return 1;
 }
 
 # Create our cleanup subroutine, executing it on SIGINT
