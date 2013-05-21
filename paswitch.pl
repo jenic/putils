@@ -4,7 +4,7 @@ use warnings;
 use feature ":5.10";
 
 my %presets = (
-	default => 'mpd',
+	default => 'Music Player Daemon',
 	strings =>
 		{ plugin	=> 'ALSA plug-in [plugin-container]'
 		, mplayer	=> 'MPlayer'
@@ -54,8 +54,9 @@ for (@lines) {
 
 given($ARGV[0]) {
 	when (undef) {
+		print "Default App: " . $presets{default} . "\nRunning Apps:\n";
 		print "$_ => " . $apps{$_} . "\n" for (keys %apps);
-		print `pacmd list-sinks | grep index`; # just bastardize this, fuck doing it in perl
+		print "Sinks:\n" . `pacmd list-sinks | grep index`; # fuck doing it in perl
 	}
 	when (/^[A-z]/) {
 		my $sink = $ARGV[1] || 0;
