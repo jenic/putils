@@ -15,12 +15,19 @@ my %presets = (
 		}
 );
 
-use constant HELPTEXT => <<EOF;
+use constant _APPSFORMAT => <<EOF;
+%s => %s (Sink %s)
+EOF
+
+use constant _HELPTEXT => <<EOF;
 Syntax: $0 [ <appname> | <sink #> ] [ <appname> | <sink #> ]
+
 Example: $0 mplayer 0 [OR] $0 0 mplayer
 	This will change mplayer to sink #0
+
 Example 2: $0 1
 	This will change default app to sink #1
+
 Example 3: $0 i1194
 	appname can be substituted for client ID found in client list
 	(Feature available only if presets->{lambdas}->{raw} is defined)
@@ -59,7 +66,11 @@ given($ARGV[0]) {
 	when (undef) {
 		print "Default App: " . $presets{default} . "\nRunning Apps:\n";
 		while ( my ($key, $value) = each %apps ) {
-			print "$key => $value (on $appsinfo{$key})\n";
+			printf	( _APPSFORMAT
+				, $key
+				, $value
+				, $appsinfo{$key}
+				);
 		}
 		print "Sinks:\n" . `pacmd list-sinks | grep index`; # fuck doing it in perl
 	}
@@ -67,14 +78,14 @@ given($ARGV[0]) {
 		my $sink = $ARGV[1] || 0;
 		my $app = &presets($ARGV[0]);
 		system 'pactl', 'move-sink-input', $app, $sink;
-		print HELPTEXT if($? != 0);
+		print _HELPTEXT if($? != 0);
 	}
 	when (/^[0-9]/) {
 		my $app = &presets($ARGV[1] || undef);
 		system "pactl", "move-sink-input", $app, $ARGV[0];
-		print HELPTEXT if($? != 0);
+		print _HELPTEXT if($? != 0);
 	}
-	default { print HELPTEXT; }
+	default { print _HELPTEXT; }
 }
 
 sub presets {
