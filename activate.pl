@@ -124,7 +124,7 @@ sub pafix {
 	return -1 if ($i > 3);
 
 	if ($i == 0) {
-		system "pafix", '1';
+		system "pafix 1";
 	} elsif ($i == 1) {
 		system "pafix";
 	} else {

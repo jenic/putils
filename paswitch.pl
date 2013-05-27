@@ -10,7 +10,7 @@ my %presets = (
 		, mplayer	=> 'MPlayer'
 		},
 	lambdas =>
-		{ raw		=>	sub { return ($_[0] =~ /^i\d+/) ? substr($_[0], 1) : undef; }
+		{ raw	=>	sub { return ($_[0] =~ /^i\d+/) ? substr($_[0], 1) : undef; }
 		, noop	=>	sub { return undef }
 		}
 );
@@ -31,31 +31,36 @@ EOF
 
 $_ = `pacmd list-sink-inputs`;
 my @lines = split /\n/;
-my %apps;
+my (%apps, %appsinfo); # appsinfo.id = apps.id
 my $state = 0;
-my $appn;
+my ($appn, $appi); # Buffers to store matches in loop
 sub presets;
 
 #for (0 .. $#lines) {
 for (@lines) {
-	if(/^\s+index:\s([0-9]+)$/) {
+	if ($state == 1 && /\t+application\.name\s=\s\"(.*)\"$/) {
+		$apps{$1} = $appn;
+		$appsinfo{$1} = $appi;
+		$appn = $appi = undef;
+		$state = 0;
+		next;
+	} elsif ($state == 1 && /^\t+sink:\s([0-9]+)\s/) {
+		$appi = $1;
+	} elsif (/^\s+index:\s([0-9]+)$/) {
 		$appn = $1;
 		$state = 1;
-		next;
 		# Should always be 19 lines ahead but we shouldn't count on that
 		#$lines[$_+19] =~ s/\t+application\.name\s=\s\"(.*)\"$/$1/;
 		#$apps{$lines[$_+19]} = $appn;
-	} elsif(/\t+application\.name\s=\s\"(.*)\"$/ && $state == 1) {
-		$apps{$1} = $appn;
-		$appn = undef;
-		$state = 0;
 	}
 }
 
 given($ARGV[0]) {
 	when (undef) {
 		print "Default App: " . $presets{default} . "\nRunning Apps:\n";
-		print "$_ => " . $apps{$_} . "\n" for (keys %apps);
+		while ( my ($key, $value) = each %apps ) {
+			print "$key => $value (on $appsinfo{$key})\n";
+		}
 		print "Sinks:\n" . `pacmd list-sinks | grep index`; # fuck doing it in perl
 	}
 	when (/^[A-z]/) {
@@ -71,6 +76,7 @@ given($ARGV[0]) {
 	}
 	default { print HELPTEXT; }
 }
+
 sub presets {
 	return $apps{ $presets{'default'} } if(!$_[0]);
 	my $arg = shift;
