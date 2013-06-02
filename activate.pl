@@ -17,6 +17,7 @@ my $activatelogdir = $ENV{HOME}."/.motion/logs";
 my $fm = 3; # File multiplier, 3 files per event
 my $ethresh = (7 * $fm); # Where 7 is the threshold of events before an alert
 my @asec = (20, 35); # Grace period for Events outside of time windows (stop, start, respectively)
+my $mrx = qr/^Default\sSource:\s$micsrc$/m;
 
 # Bits Variable uses same idea as *nix file perms
 # Switchbit = 1
@@ -34,7 +35,7 @@ sub pafix;
 $_ = `pactl stat`;
 $\ = "\n";
 $, = "\n";
-&pafix unless (/^Default\sSource:\s$micsrc$/m);
+&pafix unless ($mrx);
 
 my $amsg = ($ARGV[0]) ? join ' ', @ARGV : "Out.";
 my $startTime = time;
@@ -132,7 +133,7 @@ sub pafix {
 	}
 
 	local $_ = `pactl stat`;
-	pafix(++$i) unless (/^Default\sSource:$micsrc$/m);
+	pafix(++$i) unless ($mrx);
 	return 1;
 }
 

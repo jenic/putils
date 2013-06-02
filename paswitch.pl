@@ -1,13 +1,15 @@
 #!/usr/bin/perl
 use strict;
-use warnings;
-use feature ":5.10";
+# http://www.nntp.perl.org/group/perl.perl5.porters/2013/03/msg200559.html
+no warnings "experimental::smartmatch";
+use feature "switch";
 
 my %presets = (
 	default => 'Music Player Daemon',
 	strings =>
 		{ plugin	=> 'ALSA plug-in [plugin-container]'
-		, mplayer	=> 'MPlayer'
+		, oldmplayer	=> 'MPlayer'
+		, mplayer	=> 'mplayer2'
 		},
 	lambdas =>
 		{ raw	=>	sub { return ($_[0] =~ /^i\d+/) ? substr($_[0], 1) : undef; }
@@ -17,6 +19,10 @@ my %presets = (
 
 use constant _APPSFORMAT => <<EOF;
 %s => %s (Sink %s)
+EOF
+
+use constant _SINKSFORMAT => <<EOF;
+[%s]\t%s
 EOF
 
 use constant _HELPTEXT => <<EOF;
@@ -36,14 +42,14 @@ Null	List Clients/Sinks
 N/A	Show this help
 EOF
 
-$_ = `pacmd list-sink-inputs`;
-my @lines = split /\n/;
+sub presets;
 my (%apps, %appsinfo); # appsinfo.id = apps.id
 my $state = 0;
 my ($appn, $appi); # Buffers to store matches in loop
-sub presets;
 
-#for (0 .. $#lines) {
+#for (0 .. $#lines) { # Old way
+# Populate %apps and %appsinfo with running applications
+my @lines = `pacmd list-sink-inputs`;
 for (@lines) {
 	if ($state == 1 && /\t+application\.name\s=\s\"(.*)\"$/) {
 		$apps{$1} = $appn;
@@ -62,6 +68,24 @@ for (@lines) {
 	}
 }
 
+# Populate %sinks
+@lines = `pacmd list-sinks | grep -A1 index`;
+my %sinks;
+$state = $appn = $appi = 0;
+for (@lines) {
+	if ($state == 1 && /^\s+name:\s\<(.*?)\>/) {
+		$sinks{$appn} = $1;
+		$sinks{$appn} .= ' (Default)' if ($appi);
+		$state = 0;
+		$appn = undef;
+	} elsif (/^\s+(\*?)\s+index:\s(\d+)\s?$/) {
+		$appn = $2;
+		$appi = $1;
+		$state = 1;
+	}
+}
+
+# Main
 given($ARGV[0]) {
 	when (undef) {
 		print "Default App: " . $presets{default} . "\nRunning Apps:\n";
@@ -72,11 +96,45 @@ given($ARGV[0]) {
 				, $appsinfo{$key}
 				);
 		}
-		print "Sinks:\n" . `pacmd list-sinks | grep index`; # fuck doing it in perl
+
+		print "Sinks:\n";
+		while ( my ($key, $value) = each %sinks ) {
+			printf	( _SINKSFORMAT
+				, $key
+				, $value
+				);
+		}
 	}
 	when (/^[A-z]/) {
-		my $sink = $ARGV[1] || 0;
 		my $app = &presets($ARGV[0]);
+		my $sink;
+		my @sinks = sort keys %sinks;
+		if( !$ARGV[1] && @sinks == 2 ) { # Toggle feature
+			my $current;
+			while ( my ($key, $value) = each %apps ) {
+				#warn "$app == $value ($key) ?", "\n";
+				if($app == $value) {
+					$current = $appsinfo{$key};
+					#warn "Found: $current", "\n";
+					last;
+				}
+			}
+			if(!defined $current) {
+				$sink = 0;
+				warn "Current is undef?!";
+			} else {
+				for (@sinks) {
+					#warn "$_ = $current?", "\n";
+					if($_ != $current) {
+						$sink = $_;
+						last;
+					}
+				}
+			}
+			#warn "Debug: $app: $current to $sink (@sinks)", "\n";
+		} else {
+			$sink = $ARGV[1] || 0;
+		}
 		system 'pactl', 'move-sink-input', $app, $sink;
 		print _HELPTEXT if($? != 0);
 	}
@@ -95,9 +153,11 @@ sub presets {
 	for(keys %{$presets{'strings'}}) {
 		return $apps{ $presets{'strings'}->{$_} } if($arg eq $_);
 	}
+
 	for(keys %{$presets{'lambdas'}}) {
 		my $r = $presets{'lambdas'}->{$_}->($arg);
 		return $r if($r);
 	}
+
 	return $apps{$arg} || $arg;
 }
