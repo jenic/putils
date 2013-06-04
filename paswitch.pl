@@ -17,8 +17,10 @@ my %presets = (
 		}
 );
 
+use constant _DEBUG => 0;
+
 use constant _APPSFORMAT => <<EOF;
-%s => %s (Sink %s)
+[%s]\t%s (Sink %s)
 EOF
 
 use constant _SINKSFORMAT => <<EOF;
@@ -26,7 +28,7 @@ use constant _SINKSFORMAT => <<EOF;
 EOF
 
 use constant _HELPTEXT => <<EOF;
-Syntax: $0 [ <appname> | <sink #> ] [ <appname> | <sink #> ]
+Syntax: $0 [ <appname> [ <sink #> ] ] | [ <sink #> [ <appname> ] ]
 
 Example: $0 mplayer 0 [OR] $0 0 mplayer
 	This will change mplayer to sink #0
@@ -37,6 +39,8 @@ Example 2: $0 1
 Example 3: $0 i1194
 	appname can be substituted for client ID found in client list
 	(Feature available only if presets->{lambdas}->{raw} is defined)
+	Will toggle between two sinks if exactly 2 sinks exist
+
 ----------
 Null	List Clients/Sinks
 N/A	Show this help
@@ -91,8 +95,8 @@ given($ARGV[0]) {
 		print "Default App: " . $presets{default} . "\nRunning Apps:\n";
 		while ( my ($key, $value) = each %apps ) {
 			printf	( _APPSFORMAT
-				, $key
 				, $value
+				, $key
 				, $appsinfo{$key}
 				);
 		}
@@ -112,10 +116,10 @@ given($ARGV[0]) {
 		if( !$ARGV[1] && @sinks == 2 ) { # Toggle feature
 			my $current;
 			while ( my ($key, $value) = each %apps ) {
-				#warn "$app == $value ($key) ?", "\n";
+				&debug("$app == $value ($key) ?");
 				if($app == $value) {
 					$current = $appsinfo{$key};
-					#warn "Found: $current", "\n";
+					&debug("Found: $current");
 					last;
 				}
 			}
@@ -124,14 +128,14 @@ given($ARGV[0]) {
 				warn "Current is undef?!";
 			} else {
 				for (@sinks) {
-					#warn "$_ = $current?", "\n";
+					&debug("$_ = $current?");
 					if($_ != $current) {
 						$sink = $_;
 						last;
 					}
 				}
 			}
-			#warn "Debug: $app: $current to $sink (@sinks)", "\n";
+			&debug("$app: $current to $sink (@sinks)");
 		} else {
 			$sink = $ARGV[1] || 0;
 		}
@@ -146,9 +150,18 @@ given($ARGV[0]) {
 	default { print _HELPTEXT; }
 }
 
+sub debug {
+    return unless _DEBUG;
+    my ($msg) = @_;
+    my ($s,$m,$h) = ( localtime(time) )[0,1,2,3,6];
+    my $date = sprintf "%02d:%02d:%02d", $h, $m, $s;
+    warn "$date $msg", "\n";
+}
+
 sub presets {
 	return $apps{ $presets{'default'} } if(!$_[0]);
 	my $arg = shift;
+	&debug("Got $arg");
 
 	for(keys %{$presets{'strings'}}) {
 		return $apps{ $presets{'strings'}->{$_} } if($arg eq $_);
@@ -159,5 +172,8 @@ sub presets {
 		return $r if($r);
 	}
 
-	return $apps{$arg} || $arg;
+	return $apps{$arg} if (exists $apps{$arg});
+	warn "$arg could not be found. Is it running?", "\n"
+		if($arg !~ /\d+/);
+	return $arg;
 }
