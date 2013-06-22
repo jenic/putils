@@ -130,7 +130,7 @@ while (1) {
 
 		# Consult the Blacklist
 		for (@blist) {
-			if ($pick =~ /$_/i) {
+			if ($pick =~ $_) {
 				debug("[BLACKLIST] $pick matched $_, redoing");
 				redo PICK;
 			}
@@ -149,8 +149,8 @@ while (1) {
 		# random sometimes picks the same song twice
 		$playlist[++$#playlist] = $pick;
 		
-		# Trials are over, add the worthy song to history and prune previous
-		# entries if necessary
+		# Trials are over, add the worthy song to history and prune
+		# previous entries if necessary
 		debug("Added $pick");
 		next unless ($ARGV{count} > 0);
 		shift @picks if (@picks >= $ARGV{count});
@@ -241,7 +241,8 @@ sub nowPlaying {
 	my $out;
 	if ($stats{title}) {
 		$out = "<fc=green>".$stats{title}."</fc>";
-		$out .= " - <fc=yellow>".$stats{artist}."</fc>" if ($stats{artist});
+		$out .= " - <fc=yellow>".$stats{artist}."</fc>"
+			if ($stats{artist});
 	} else {
 		$out = "<fc=red>".$stats{file}."</fc>";
 	}
@@ -260,10 +261,12 @@ sub debug {
 
 sub upBlist {
 	open FH, $ARGV{blist} or die "$!\n";
-	@blist = <FH>;
-	chomp @blist;
+	my @bl = <FH>;
+	chomp @bl;
 	close FH;
 	my $blts = (stat($ARGV{blist}))[9];
+	@blist = () if (@bl > 0);
+	push @blist, qr{$_}i for (@bl);
 	debug("Blacklist $blts Loaded: " . @blist);
 	return $blts;
 }
@@ -279,12 +282,13 @@ sub isMatch {
 
 	while ($low <= $high) {
 		$mid = sprintf("%i", ($low + $high) / 2);
-		# Why chomp the whole array when we wont even look at half of it?
+		# Why chomp whole array when we wont even look at half of it?
 		chomp $haystack[$mid];
+		&debug("Middle Element: $haystack[$mid]");
 		# Capitals fuck with shit
 		my $cmp = $opt->($name, $haystack[$mid]);
 
-		&debug("low = $low, high = $high, mid = $mid, cmp = $cmp, $haystack[$mid]");
+		&debug("l = $low, h = $high, m = $mid, cmp = $cmp");
 
 		if($cmp < 0) {
 			$high = $mid - 1;
