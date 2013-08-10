@@ -28,13 +28,13 @@ putils
 * dyn-mpd
 
 	This program is a deviation of the dynamic playlist
-	for MPD written by Tue Abrahamsen
-	<tue.abrahamsen@gmail.com>, et al. It was created
-	because its author was frustrated with Audio::MPD's
-	refusal to compile correctly on his crappy outdated
-	system. Additionally, this version has different
-	design priorities, focusing on random playlist
-	generation and foregoing the scoring system.
+	for MPD written by Tue Abrahamsen, et al. It was
+	created because its author was frustrated with
+	Audio::MPD's refusal to compile correctly on his
+	crappy outdated system. Additionally, this version
+	has different design priorities, focusing on random
+	playlist generation and foregoing the scoring
+	system.
 
 	Note that this version does _not_ manage the
 	playlist. Without consume mode enabled in MPD this
