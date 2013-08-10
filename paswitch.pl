@@ -6,14 +6,28 @@ use feature "switch";
 
 my %presets = (
 	default => 'Music Player Daemon',
-	strings =>
+	# Use this to add aliases
+	aliases =>
 		{ plugin	=> 'ALSA plug-in [plugin-container]'
 		, oldmplayer	=> 'MPlayer'
 		, mplayer	=> 'mplayer2'
 		},
+	# Use this to easily add features
+	# TODO: raw has no error checking. Goes all the way to pacmd before
+	# user finds out given app id doesn't exist
 	lambdas =>
-		{ raw	=>	sub { return ($_[0] =~ /^i\d+/) ? substr($_[0], 1) : undef; }
-		, noop	=>	sub { return undef }
+		{ raw	=>	sub { return ($_[0] =~ /^i\d+/)
+							? substr($_[0], 1)
+							: undef;
+				}
+		, match	=>	sub {	my %m;
+					my %r = %{$_[1]};
+					for (keys %r) {
+						$m{$_}++ if (/$_[0]/i);
+					}
+					my @f = keys %m;
+					return (@f == 1) ? $r{$f[0]} : undef;
+				}
 		}
 );
 
@@ -51,7 +65,6 @@ my (%apps, %appsinfo); # appsinfo.id = apps.id
 my $state = 0;
 my ($appn, $appi); # Buffers to store matches in loop
 
-#for (0 .. $#lines) { # Old way
 # Populate %apps and %appsinfo with running applications
 my @lines = `pacmd list-sink-inputs`;
 for (@lines) {
@@ -66,9 +79,6 @@ for (@lines) {
 	} elsif (/^\s+index:\s([0-9]+)$/) {
 		$appn = $1;
 		$state = 1;
-		# Should always be 19 lines ahead but we shouldn't count on that
-		#$lines[$_+19] =~ s/\t+application\.name\s=\s\"(.*)\"$/$1/;
-		#$apps{$lines[$_+19]} = $appn;
 	}
 }
 
@@ -92,7 +102,7 @@ for (@lines) {
 # Main
 given($ARGV[0]) {
 	when (undef) {
-		print "Default App: " . $presets{default} . "\nRunning Apps:\n";
+		print "Default App: $presets{default}\nRunning Apps:\n";
 		while ( my ($key, $value) = each %apps ) {
 			printf	( _APPSFORMAT
 				, $value
@@ -113,29 +123,32 @@ given($ARGV[0]) {
 		my $app = &presets($ARGV[0]);
 		my $sink;
 		my @sinks = sort keys %sinks;
+
+		&debug("[MAIN] presets() returns with $app");
 		if( !$ARGV[1] && @sinks == 2 ) { # Toggle feature
 			my $current;
 			while ( my ($key, $value) = each %apps ) {
-				&debug("$app == $value ($key) ?");
+				&debug("[TOGGLE] $app == $value ($key) ?");
 				if($app == $value) {
 					$current = $appsinfo{$key};
-					&debug("Found: $current");
+					&debug("[TOGGLE] Found: $current");
 					last;
 				}
 			}
 			if(!defined $current) {
 				$sink = 0;
-				warn "Current is undef?!";
+				warn "Current sink of $app couldn't be found" .
+				", assuming 0", "\n";
 			} else {
 				for (@sinks) {
-					&debug("$_ = $current?");
+					&debug("[TOGGLE] $_ = $current?");
 					if($_ != $current) {
 						$sink = $_;
 						last;
 					}
 				}
 			}
-			&debug("$app: $current to $sink (@sinks)");
+			&debug("[TOGGLE] $app: $current to $sink (@sinks)");
 		} else {
 			$sink = $ARGV[1] || 0;
 		}
@@ -163,12 +176,12 @@ sub presets {
 	my $arg = shift;
 	&debug("Got $arg");
 
-	for(keys %{$presets{'strings'}}) {
-		return $apps{ $presets{'strings'}->{$_} } if($arg eq $_);
+	for(keys %{$presets{'aliases'}}) {
+		return $apps{ $presets{'aliases'}->{$_} } if($arg eq $_);
 	}
 
 	for(keys %{$presets{'lambdas'}}) {
-		my $r = $presets{'lambdas'}->{$_}->($arg);
+		my $r = $presets{'lambdas'}->{$_}->($arg, \%apps);
 		return $r if($r);
 	}
 
