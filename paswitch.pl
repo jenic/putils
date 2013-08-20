@@ -13,9 +13,10 @@ my %presets = (
 		, mplayer	=> 'mplayer2'
 		},
 	# Use this to easily add features
-	# TODO: raw has no error checking. Goes all the way to pacmd before
-	# user finds out given app id doesn't exist
 	lambdas =>
+	# TODO: raw has no error checking. Goes all the way to pacmd before
+	# user finds out given app id doesn't exist. For now I've decided to
+	# leave it AS A FEATURE!
 		{ raw	=>	sub { return ($_[0] =~ /^i\d+/)
 							? substr($_[0], 1)
 							: undef;
@@ -44,23 +45,33 @@ EOF
 use constant _HELPTEXT => <<EOF;
 Syntax: $0 [ <appname> [ <sink #> ] ] | [ <sink #> [ <appname> ] ]
 
-Example: $0 mplayer 0 [OR] $0 0 mplayer
-	This will change mplayer to sink #0
+Example: $0 MPlayer 0 [OR] $0 0 MPlayer
+	This will change mplayer to sink #0 Note the case.
 
-Example 2: $0 1
+Example of default app: $0 1
 	This will change default app to sink #1
 
-Example 3: $0 i1194
+Example of "Raw ID" feature: $0 i1194
 	appname can be substituted for client ID found in client list
 	(Feature available only if presets->{lambdas}->{raw} is defined)
-	Will toggle between two sinks if exactly 2 sinks exist
+
+Example of "match" feature: $0 plug
+	Partial match of /plug/ against all running apps.
+	(Feature available w/ presets->{lambdas}->{match})
+
+When given appname first, will toggle between two sinks if exactly 2 sinks
+exist.
 
 ----------
 Null	List Clients/Sinks
 N/A	Show this help
 EOF
 
+# Forward Declarations
+sub debug;
+sub iterhash;
 sub presets;
+
 my (%apps, %appsinfo); # appsinfo.id = apps.id
 my $state = 0;
 my ($appn, $appi); # Buffers to store matches in loop
@@ -99,25 +110,32 @@ for (@lines) {
 	}
 }
 
+# For Debug
+if (_DEBUG) {
+	&debug("Apps Hash:");
+	&iterhash(\%apps);
+
+	&debug("Appsinfo Hash:");
+	&iterhash(\%appsinfo);
+}
+
 # Main
 given($ARGV[0]) {
 	when (undef) {
 		print "Default App: $presets{default}\nRunning Apps:\n";
-		while ( my ($key, $value) = each %apps ) {
-			printf	( _APPSFORMAT
-				, $value
-				, $key
-				, $appsinfo{$key}
-				);
-		}
+		&iterhash(\%apps, sub { printf	( _APPSFORMAT
+						, $_[0]
+						, $_[1]
+						, $appsinfo{$_[0]}
+						)}
+		);
 
 		print "Sinks:\n";
-		while ( my ($key, $value) = each %sinks ) {
-			printf	( _SINKSFORMAT
-				, $key
-				, $value
-				);
-		}
+		&iterhash(\%sinks, sub { printf ( _SINKSFORMAT
+						, $_[0]
+						, $_[1]
+						)}
+		);
 	}
 	when (/^[A-z]/) {
 		my $app = &presets($ARGV[0]);
@@ -125,16 +143,22 @@ given($ARGV[0]) {
 		my @sinks = sort keys %sinks;
 
 		&debug("[MAIN] presets() returns with $app");
-		if( !$ARGV[1] && @sinks == 2 ) { # Toggle feature
-			my $current;
-			while ( my ($key, $value) = each %apps ) {
-				&debug("[TOGGLE] $app == $value ($key) ?");
-				if($app == $value) {
-					$current = $appsinfo{$key};
-					&debug("[TOGGLE] Found: $current");
+		my $current;
+		&iterhash(\%apps, sub {
+				&debug("[MAIN] $app == $_[1] ($_[0]) ?");
+				if($app == $_[1]) {
+					$current = $appsinfo{$_[0]};
+					&debug("[MAIN] Found: $current");
 					last;
 				}
-			}
+		});
+
+		unless (defined $current) {
+			warn "$app could not be found! " .
+			"Are you sure it's running?\n";
+		}
+
+		if( !$ARGV[1] && @sinks == 2 ) { # Toggle feature
 			if(!defined $current) {
 				$sink = 0;
 				warn "Current sink of $app couldn't be found" .
@@ -150,13 +174,16 @@ given($ARGV[0]) {
 			}
 			&debug("[TOGGLE] $app: $current to $sink (@sinks)");
 		} else {
-			$sink = $ARGV[1] || 0;
+			&debug("[TOGGLE] Only 1 sink found. Will not toggle.");
+			$sink = $ARGV[1] || $sinks[0];
 		}
+		&debug("[MAIN] Params passed to pactl: $app $sink");
 		system 'pactl', 'move-sink-input', $app, $sink;
 		print _HELPTEXT if($? != 0);
 	}
 	when (/^[0-9]/) {
 		my $app = &presets($ARGV[1] || undef);
+		&debug("[MAIN] presets() returns with $app");
 		system "pactl", "move-sink-input", $app, $ARGV[0];
 		print _HELPTEXT if($? != 0);
 	}
@@ -171,18 +198,38 @@ sub debug {
     warn "$date $msg", "\n";
 }
 
+sub iterhash {
+	my $ref = shift;
+	my %hash = %{ $ref };
+	my $sub = shift || sub { &debug("$_[0] => $_[1]") };
+
+	while ( my ($k, $v) = each %hash) {
+		$sub->($k, $v);
+	}
+}
+
 sub presets {
+	&debug("Begin presets()");
 	return $apps{ $presets{'default'} } if(!$_[0]);
 	my $arg = shift;
 	&debug("Got $arg");
 
 	for(keys %{$presets{'aliases'}}) {
-		return $apps{ $presets{'aliases'}->{$_} } if($arg eq $_);
+		if ($arg eq $_) {
+			&debug("$arg == $_");
+			&debug("aliases returns " .
+				$apps{ $presets{'aliases'}->{$_} }
+			);
+			return $apps{ $presets{'aliases'}->{$_} };
+		}
 	}
 
 	for(keys %{$presets{'lambdas'}}) {
 		my $r = $presets{'lambdas'}->{$_}->($arg, \%apps);
-		return $r if($r);
+		if ($r) {
+			&debug("Lambda returns $r");
+			return $r;
+		}
 	}
 
 	return $apps{$arg} if (exists $apps{$arg});

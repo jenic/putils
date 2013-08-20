@@ -1,7 +1,7 @@
 putils
 ======
 
-## Small perl utilities for various CLI tasks ##
+_Small perl utilities for various CLI tasks_
 
 * activate
 
@@ -59,4 +59,5 @@ putils
 	for pacmd.
 
 * weaboo-crc
+
 	Check the CRC value of my animes...
