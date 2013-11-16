@@ -18,6 +18,8 @@ my $fm = 3; # File multiplier, 3 files per event
 my $ethresh = (7 * $fm); # Where 7 is the threshold of events before an alert
 my @asec = (20, 35); # Grace period for Events outside of time windows (stop, start, respectively)
 my $mrx = qr/^Default\sSource:\s$micsrc$/m;
+my $pl = 'mpv';
+my @pl_opts = qw(--really-quiet --fixed-vo);
 
 # Bits Variable uses same idea as *nix file perms
 # Switchbit = 1
@@ -172,7 +174,7 @@ $SIG{INT} = sub {
 	chomp(my $response = <STDIN>);
 	return 1 if ($response =~ /n/i);
 	my @avis = glob $eventdir . '/*.avi';
-	system 'mplayer', '-fixed-vo', '-really-quiet', @avis;
+	system $pl, @pl_opts, @avis;
 	
 	print "\nCleanup Recordings? [y/N] ";
 	$response = <STDIN>;

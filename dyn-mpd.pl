@@ -30,10 +30,6 @@ $SIG{CHLD} = sub {
 	waitpid($pid || -1, 0);
 };
 END { $sock->close() if $sock; }
-my $_cmp = sub {
-	my ($name, $stack) = @_;
-	return (lc($name) cmp lc($stack));
-};
 
 if ($ARGV{debug}) {
 	warn "$_ => " . $ARGV{$_}, "\n" for(keys %ARGV);
@@ -86,9 +82,11 @@ while (1) {
 		if ($pid > 1 && kill 0 => $pid);
 
 	# Once playlist gets below certain threshold, fork child for heavy
-	# lifting:
+	# lifting if we do not have songs hiding above the playing songs:
 	debug("Checking Playlist: " . $status{playlistlength});
-	$pid = fork if ($status{playlistlength} < $ARGV{thresh});
+	$pid = fork if ( ($status{playlistlength} < $ARGV{thresh})
+			 # We are not a strongly typed language :(
+			 && ($status{song} eq '0' && $status{repeat}) );
 	
 	next if ($pid || $pid == -1);
 	# Now we are the child
@@ -211,27 +209,27 @@ sub mpd {
 	chomp @reply;
 	# If nothing to return, must return 1
 	# or all hell breaks loose
-	return (@reply > 1) ? @reply : pop @reply || 1;
+	return \@reply;
 }
 
 # Makes hash (associative) of a &mpd command
 sub mkassoc {
-	my @cmd = &mpd(shift);
-	return map { my @r = split /:\s/; lc($r[0]) => $r[1] // '' } @cmd;
+	return	map { my @r = split /:\s/; lc($r[0]) => $r[1] // '' }
+		@{ &mpd(shift) };
 }
 
 # Specific subfunctions of &mpd
 sub playlist {
-	return (map { (split ':')[-1] } &mpd('playlist'));
+	return (map { (split ':')[-1] } @{ &mpd('playlist') });
 }
 sub listall {
 	# How do we get regex to *return* string as shown with 'r' modifier :(
-	return (map { (s/file:\s//) ? $_ : () } &mpd('listall'));
+	return (map { (s/file:\s//) ? $_ : () } @{ &mpd('listall') });
 }
 sub add {
 	my $file = shift;
 	my $add = &mpd('add "' . $file . '"');
-	return $add;
+	return ($add) ? 1 : 0;
 }
 sub nowPlaying {
 	my %stats = &mkassoc('currentsong');
@@ -275,9 +273,15 @@ sub isMatch {
 	my ($low, $mid, $high);
 	my ($name, $ref, $opt) = @_;
 	my @haystack = @$ref;
+
 	$low = 0;
 	$high = $#haystack;
-	$opt = $_cmp if(!$opt);
+	if (!$opt) {
+		$opt = sub {
+			my ($name, $stack) = @_;
+			return ( lc($name) cmp lc($stack) );
+		};
+	}
 	&debug("Binary search subroutine begins with needle $name");
 
 	while ($low <= $high) {
