@@ -26,15 +26,15 @@ sub isMatch;
 sub daemonize;
 
 $SIG{CHLD} = sub {
-	debug("Child reported for reapin! (pid var is $pid)");
-	waitpid($pid || -1, 0);
+    debug("Child reported for reapin! (pid var is $pid)");
+    waitpid($pid || -1, 0);
 };
 END { $sock->close() if $sock; }
 
 if ($ARGV{debug}) {
-	warn "$_ => " . $ARGV{$_}, "\n" for(keys %ARGV);
+    warn "$_ => " . $ARGV{$_}, "\n" for(keys %ARGV);
 } else {
-	&daemonize;
+    &daemonize;
 }
 
 # Load Blacklist if it exists
@@ -42,210 +42,210 @@ my $blts = &upBlist if (-e $ARGV{blist});
 
 debug("Beginning Loop");
 while (1) {
-	debug("New Loop: PID is $pid");
-	my $i = 0;
-	do {
-		# Did our socket time out or get closed by the child?
-		debug("Checking Socket [Iteration: $i]");
-		$sock = &mkSock unless ( $i < 5 && $sock && $sock->connected);
+    debug("New Loop: PID is $pid");
+    my $i = 0;
+    do {
+        # Did our socket time out or get closed by the child?
+        debug("Checking Socket [Iteration: $i]");
+        $sock = &mkSock unless ( $i < 5 && $sock && $sock->connected);
 
-		# Setup our status hash for this iteration
-		%status = &mkassoc('status');
-		
-		$i++;
-	} while ( !exists $status{playlistlength} && $i < 20 );
-	
-	# 0 length playlist causes way too many problems
-	die "Playlist length is 0" if !$status{playlistlength};
+        # Setup our status hash for this iteration
+        %status = &mkassoc('status');
 
-	if($ARGV{debug}) {
-		debug("Dumping status hash:");
-		warn "\t$_ -> " . $status{$_}, "\n" for (keys %status);
-	}
+        $i++;
+    } while ( !exists $status{playlistlength} && $i < 20 );
 
-	# Don't bother if we aren't "Playing"
-	next unless (defined $status{state} && $status{state} eq "play");
+    # 0 length playlist causes way too many problems
+    die "Playlist length is 0" if !$status{playlistlength};
 
-	# Unrelated to this script's primary purpose but for efficiency's sake
-	# I am combining these two goals into a single process. This is for
-	# xmobar:
-	open FH, '>', '/tmp/mpd-playing' or die "I/O ERR: $!\n";
-	print FH &nowPlaying;
-	close FH;
-	
-	# If we have a child process running, don't fork another, that is
-	# silly
+    if($ARGV{debug}) {
+        debug("Dumping status hash:");
+        warn "\t$_ -> " . $status{$_}, "\n" for (keys %status);
+    }
 
-	debug("$pid still running")
-		and sleep 2
-		and next
-		if ($pid > 1 && kill 0 => $pid);
+    # Don't bother if we aren't "Playing"
+    next unless (defined $status{state} && $status{state} eq "play");
 
-	# Once playlist gets below certain threshold, fork child for heavy
-	# lifting if we do not have songs hiding above the playing songs:
-	debug("Checking Playlist: " . $status{playlistlength});
-	$pid = fork if ( ($status{playlistlength} < $ARGV{thresh})
-			 # We are not a strongly typed language :(
-			 && ($status{song} eq '0' && $status{repeat}) );
-	
-	next if ($pid || $pid == -1);
-	# Now we are the child
-	debug("Child Forked!");
-	use Encode;
-	use Storable;
-	my @library = &listall;
-	# Binary search requires a sorted haystack
-	my @playlist = sort { lc($a) cmp lc($b) } &playlist;
-	my $pickref;
+    # Unrelated to this script's primary purpose but for efficiency's sake
+    # I am combining these two goals into a single process. This is for
+    # xmobar:
+    open FH, '>', '/tmp/mpd-playing' or die "I/O ERR: $!\n";
+    print FH &nowPlaying;
+    close FH;
 
-	# Check for History file and load it
-	my @picks;
-	if (-e $ARGV{Histfile}) {
-		# TODO: Need a "try catch" here
-		$pickref = retrieve($ARGV{Histfile});
-		if(!$pickref) {
-			@picks = ();
-			debug("Failed to load History file! $!");
-		} else {
-			@picks = @$pickref;
-			debug("History file loaded: " . @picks);
-		}
-	} else {
-		@picks = ();
-	}
-	
-	# Generate appropriate amount via rand @library
-	PICK:
-	for (0..$ARGV{add}) {
-		my $id = sprintf "%i", rand @library;
-		# Check history array for this ID
-		if(&isMatch($id, \@picks, sub { return ($_[0] <=> $_[1]); })) {
-			debug("[HIST] $id found in @picks, redoing");
-			redo PICK;
-		}
+    # If we have a child process running, don't fork another, that is
+    # silly
 
-		my $pick = encode('utf-8', $library[$id]);
+    debug("$pid still running")
+        and sleep 2
+        and next
+        if ($pid > 1 && kill 0 => $pid);
 
-		# Consult the Blacklist
-		for (@blist) {
-			if ($pick =~ $_) {
-				debug("[BLACKLIST] $pick matched $_, redoing");
-				redo PICK;
-			}
-		}
-		# Don't add entries that are already queued. This somewhat
-		# overlaps history feature except this also takes into
-		# account songs added manually by the user
-		if(&isMatch($pick, \@playlist)) {
-			debug("[PL] $pick is a DUP, redoing pick");
-			redo PICK;
-		}
-		
-		# Add to playlist
-		&add(decode('utf-8', $pick)) or redo PICK;
-		# Append pick to playlist array so it is also checked since
-		# random sometimes picks the same song twice
-		$playlist[++$#playlist] = $pick;
-		
-		# Trials are over, add the worthy song to history and prune
-		# previous entries if necessary
-		debug("Added $pick");
-		next unless ($ARGV{count} > 0);
-		shift @picks if (@picks >= $ARGV{count});
-		push @picks, $id;
-	}
-	
-	# TODO: Figure out how history stored duplicate numbers
-	# Sort our array before storing
-	@picks = sort { $a <=> $b } @picks;
-	# Save our history array to disk
-	store(\@picks, $ARGV{Histfile}) if ($ARGV{count} > 0);
+    # Once playlist gets below certain threshold, fork child for heavy
+    # lifting if we do not have songs hiding above the playing songs:
+    debug("Checking Playlist: " . $status{playlistlength});
+    $pid = fork if ( ($status{playlistlength} < $ARGV{thresh})
+             # We are not a strongly typed language :(
+             && ($status{song} eq '0' && $status{repeat}) );
 
-	# End child, return to infinite loop
-	exit;
+    next if ($pid || $pid == -1);
+    # Now we are the child
+    debug("Child Forked!");
+    use Encode;
+    use Storable;
+    my @library = &listall;
+    # Binary search requires a sorted haystack
+    my @playlist = sort { lc($a) cmp lc($b) } &playlist;
+    my $pickref;
+
+    # Check for History file and load it
+    my @picks;
+    if (-e $ARGV{Histfile}) {
+        # TODO: Need a "try catch" here
+        $pickref = retrieve($ARGV{Histfile});
+        if(!$pickref) {
+            @picks = ();
+            debug("Failed to load History file! $!");
+        } else {
+            @picks = @$pickref;
+            debug("History file loaded: " . @picks);
+        }
+    } else {
+        @picks = ();
+    }
+
+    # Generate appropriate amount via rand @library
+    PICK:
+    for (0..$ARGV{add}) {
+        my $id = sprintf "%i", rand @library;
+        # Check history array for this ID
+        if(&isMatch($id, \@picks, sub { return ($_[0] <=> $_[1]); })) {
+            debug("[HIST] $id found in @picks, redoing");
+            redo PICK;
+        }
+
+        my $pick = encode('utf-8', $library[$id]);
+
+        # Consult the Blacklist
+        for (@blist) {
+            if ($pick =~ $_) {
+                debug("[BLACKLIST] $pick matched $_, redoing");
+                redo PICK;
+            }
+        }
+        # Don't add entries that are already queued. This somewhat
+        # overlaps history feature except this also takes into
+        # account songs added manually by the user
+        if(&isMatch($pick, \@playlist)) {
+            debug("[PL] $pick is a DUP, redoing pick");
+            redo PICK;
+        }
+
+        # Add to playlist
+        &add(decode('utf-8', $pick)) or redo PICK;
+        # Append pick to playlist array so it is also checked since
+        # random sometimes picks the same song twice
+        $playlist[++$#playlist] = $pick;
+
+        # Trials are over, add the worthy song to history and prune
+        # previous entries if necessary
+        debug("Added $pick");
+        next unless ($ARGV{count} > 0);
+        shift @picks if (@picks >= $ARGV{count});
+        push @picks, $id;
+    }
+
+    # TODO: Figure out how history stored duplicate numbers
+    # Sort our array before storing
+    @picks = sort { $a <=> $b } @picks;
+    # Save our history array to disk
+    store(\@picks, $ARGV{Histfile}) if ($ARGV{count} > 0);
+
+    # End child, return to infinite loop
+    exit;
 } continue {
-	my $l = $status{playlistlength} || 0;
-	my $s = $ARGV{sleep} + ((($l + 1)-$ARGV{thresh})*.5);
-	$s = $ARGV{sleepmax} if ($s > $ARGV{sleepmax});
-	debug("Sleeping for $s");
-	sleep $s;
-	
-	# Update our blacklist if it has changed
-	if (defined $blts) {
-		my $nbl = (stat($ARGV{blist}))[9];
-		if ($nbl > $blts) {
-			debug("BList has changed! ($blts -> $nbl)");
-			&upBlist;
-			$blts = $nbl;
-		}
-	}
+    my $l = $status{playlistlength} || 0;
+    my $s = $ARGV{sleep} + ((($l + 1)-$ARGV{thresh})*.5);
+    $s = $ARGV{sleepmax} if ($s > $ARGV{sleepmax});
+    debug("Sleeping for $s");
+    sleep $s;
+
+    # Update our blacklist if it has changed
+    if (defined $blts) {
+        my $nbl = (stat($ARGV{blist}))[9];
+        if ($nbl > $blts) {
+            debug("BList has changed! ($blts -> $nbl)");
+            &upBlist;
+            $blts = $nbl;
+        }
+    }
 }
 
 exit; # Lol wat you doin here?
 
 sub mkSock {
-	my $sock = IO::Socket::INET->new
-		( PeerAddr	=> $ARGV{host}
-		, PeerPort	=> $ARGV{port}
-		, Proto		=> 'tcp'
-		, Timeout	=> $ARGV{sleepmax}
-		);
-	die "Unable to connect to mpd: $!\n" unless $sock;
-	debug("Socket Created!");
-	my $ack = <$sock>;
-	die "Not MPD? ($ack)\n" unless ($ack =~ /^OK MPD/);
-	return $sock;
+    my $sock = IO::Socket::INET->new
+        ( PeerAddr  => $ARGV{host}
+        , PeerPort  => $ARGV{port}
+        , Proto     => 'tcp'
+        , Timeout   => $ARGV{sleepmax}
+        );
+    die "Unable to connect to mpd: $!\n" unless $sock;
+    debug("Socket Created!");
+    my $ack = <$sock>;
+    die "Not MPD? ($ack)\n" unless ($ack =~ /^OK MPD/);
+    return $sock;
 }
 sub mpd {
-	my $cmd	= shift;
-	print $sock "$cmd\n";
-	my @reply;
-	while(<$sock>) {
-		return 0 if (/^ACK\s/);
-		last if (/^OK$/);
-		next if (/^directory:/);
-		$reply[++$#reply] = $_;
-	}
-	chomp @reply;
-	# If nothing to return, must return 1
-	# or all hell breaks loose
-	return \@reply;
+    my $cmd = shift;
+    print $sock "$cmd\n";
+    my @reply;
+    while(<$sock>) {
+        return 0 if (/^ACK\s/);
+        last if (/^OK$/);
+        next if (/^directory:/);
+        $reply[++$#reply] = $_;
+    }
+    chomp @reply;
+    # If nothing to return, must return 1
+    # or all hell breaks loose
+    return \@reply;
 }
 
 # Makes hash (associative) of a &mpd command
 sub mkassoc {
-	return	map { my @r = split /:\s/; lc($r[0]) => $r[1] // '' }
-		@{ &mpd(shift) };
+    return  map { my @r = split /:\s/; lc($r[0]) => $r[1] // '' }
+        @{ &mpd(shift) };
 }
 
 # Specific subfunctions of &mpd
 sub playlist {
-	return (map { (split ':')[-1] } @{ &mpd('playlist') });
+    return (map { (split ':')[-1] } @{ &mpd('playlist') });
 }
 sub listall {
-	# How do we get regex to *return* string as shown with 'r' modifier :(
-	return (map { (s/file:\s//) ? $_ : () } @{ &mpd('listall') });
+    # How do we get regex to *return* string as shown with 'r' modifier :(
+    return (map { (s/file:\s//) ? $_ : () } @{ &mpd('listall') });
 }
 sub add {
-	my $file = shift;
-	my $add = &mpd('add "' . $file . '"');
-	return ($add) ? 1 : 0;
+    my $file = shift;
+    my $add = &mpd('add "' . $file . '"');
+    return ($add) ? 1 : 0;
 }
 sub nowPlaying {
-	my %stats = &mkassoc('currentsong');
-	return "<fc=red>No Playlist</fc>" unless defined $stats{time};
-	my ($c, $t) = split ':', $status{time};
-	my $percent = sprintf "%.0f", ( $c * 100 / $t );
-	my $out;
-	if ($stats{title}) {
-		$out = "<fc=green>".$stats{title}."</fc>";
-		$out .= " - <fc=yellow>".$stats{artist}."</fc>"
-			if ($stats{artist});
-	} else {
-		$out = "<fc=red>".$stats{file}."</fc>";
-	}
-	$out .= " [<fc=blue>$percent%</fc>]";
-	return $out;
+    my %stats = &mkassoc('currentsong');
+    return "<fc=red>No Playlist</fc>" unless defined $stats{time};
+    my ($c, $t) = split ':', $status{time};
+    my $percent = sprintf "%.0f", ( $c * 100 / $t );
+    my $out;
+    if ($stats{title}) {
+        $out = "<fc=green>".$stats{title}."</fc>";
+        $out .= " - <fc=yellow>".$stats{artist}."</fc>"
+            if ($stats{artist});
+    } else {
+        $out = "<fc=red>".$stats{file}."</fc>";
+    }
+    $out .= " [<fc=blue>$percent%</fc>]";
+    return $out;
 }
 
 # Other Subs
@@ -258,76 +258,76 @@ sub debug {
 }
 
 sub upBlist {
-	open FH, $ARGV{blist} or die "$!\n";
-	my @bl = <FH>;
-	chomp @bl;
-	close FH;
-	my $blts = (stat($ARGV{blist}))[9];
-	@blist = () if (@bl > 0);
-	push @blist, qr{$_}i for (@bl);
-	debug("Blacklist $blts Loaded: " . @blist);
-	return $blts;
+    open FH, $ARGV{blist} or die "$!\n";
+    my @bl = <FH>;
+    chomp @bl;
+    close FH;
+    my $blts = (stat($ARGV{blist}))[9];
+    @blist = () if (@bl > 0);
+    push @blist, qr{$_}i for (@bl);
+    debug("Blacklist $blts Loaded: " . @blist);
+    return $blts;
 }
 
 sub isMatch {
-	my ($low, $mid, $high);
-	my ($name, $ref, $opt) = @_;
-	my @haystack = @$ref;
+    my ($low, $mid, $high);
+    my ($name, $ref, $opt) = @_;
+    my @haystack = @$ref;
 
-	$low = 0;
-	$high = $#haystack;
-	if (!$opt) {
-		$opt = sub {
-			my ($name, $stack) = @_;
-			return ( lc($name) cmp lc($stack) );
-		};
-	}
-	&debug("Binary search subroutine begins with needle $name");
+    $low = 0;
+    $high = $#haystack;
+    if (!$opt) {
+        $opt = sub {
+            my ($name, $stack) = @_;
+            return ( lc($name) cmp lc($stack) );
+        };
+    }
+    &debug("Binary search subroutine begins with needle $name");
 
-	while ($low <= $high) {
-		$mid = sprintf("%i", ($low + $high) / 2);
-		# Why chomp whole array when we wont even look at half of it?
-		chomp $haystack[$mid];
-		&debug("Middle Element: $haystack[$mid]");
-		# Capitals fuck with shit
-		my $cmp = $opt->($name, $haystack[$mid]);
+    while ($low <= $high) {
+        $mid = sprintf("%i", ($low + $high) / 2);
+        # Why chomp whole array when we wont even look at half of it?
+        chomp $haystack[$mid];
+        &debug("Middle Element: $haystack[$mid]");
+        # Capitals fuck with shit
+        my $cmp = $opt->($name, $haystack[$mid]);
 
-		&debug("l = $low, h = $high, m = $mid, cmp = $cmp");
+        &debug("l = $low, h = $high, m = $mid, cmp = $cmp");
 
-		if($cmp < 0) {
-			$high = $mid - 1;
-		} elsif ($cmp > 0) {
-			$low = $mid + 1;
-		} else {
-			&debug("-- Match --");
-			return $mid; #Match
-		}
-	}
-	&debug("-- No Match --");
-	return 0; # No match
+        if($cmp < 0) {
+            $high = $mid - 1;
+        } elsif ($cmp > 0) {
+            $low = $mid + 1;
+        } else {
+            &debug("-- Match --");
+            return $mid; #Match
+        }
+    }
+    &debug("-- No Match --");
+    return 0; # No match
 
 }
 
 sub daemonize {
-	use POSIX;
-	POSIX::setsid or die "Setsid: $!\n";
-	my $pid = fork();
-	if ($pid < 0) {
-		die "Fork: $!\n";
-	} elsif ($pid) {
-		# Write child to pid file and then exit
-		#open FH, '>', "/tmp/ddns-proxy.pid" or die "parent: $!\n";
-		#print FH $pid;
-		#close FH;
-		exit 0;
-	}
-	chdir "/";
-	umask 0;
-	POSIX::close $_
-		foreach (0 .. (POSIX::sysconf (&POSIX::_SC_OPEN_MAX) || 1024));
-	open (STDIN, "</dev/null");
-	open (STDOUT, ">/dev/null");
-	open (STDERR, ">&STDOUT");
+    use POSIX;
+    POSIX::setsid or die "Setsid: $!\n";
+    my $pid = fork();
+    if ($pid < 0) {
+        die "Fork: $!\n";
+    } elsif ($pid) {
+        # Write child to pid file and then exit
+        #open FH, '>', "/tmp/ddns-proxy.pid" or die "parent: $!\n";
+        #print FH $pid;
+        #close FH;
+        exit 0;
+    }
+    chdir "/";
+    umask 0;
+    POSIX::close $_
+        foreach (0 .. (POSIX::sysconf (&POSIX::_SC_OPEN_MAX) || 1024));
+    open (STDIN, "</dev/null");
+    open (STDOUT, ">/dev/null");
+    open (STDERR, ">&STDOUT");
 }
 
 __END__
@@ -368,8 +368,8 @@ Items to keep in playlist until appending new items. Somewhat equivalent to
 Audio::MPD's -old functionality. Defaults to 10.
 
 =for Euclid:
-	thresh.type:	integer > 0
-	thresh.default:	10
+    thresh.type:    integer > 0
+    thresh.default: 10
 
 =item -a[dd] <add>
 
@@ -377,8 +377,8 @@ Audio::MPD's -old functionality. Defaults to 10.
 Number of items to add per loop: Defaults to 10.
 
 =for Euclid:
-	add.type:	integer > 0
-	add.default:	10
+    add.type:   integer > 0
+    add.default:    10
 
 =item -s[leep] <sleep>
 
@@ -388,8 +388,8 @@ sleep + (((playlistLength + 1) - Threshold) * .5)
 Default is 5 seconds.
 
 =for Euclid:
-	sleep.type:	number > 0
-	sleep.default:	5
+    sleep.type: number > 0
+    sleep.default:  5
 
 =item -sleepmax <sleepmax>
 
@@ -397,48 +397,48 @@ Maximum time daemon can sleep between loops.
 Default is 30 seconds.
 
 =for Euclid:
-	sleepmax.type:		number > 0
-	sleepmax.default:	30
+    sleepmax.type:      number > 0
+    sleepmax.default:   30
 
 =item -p[ort] <port>
 
 Port MPD is listening on. Defaults to 6600.
 
 =for Euclid:
-	port.type:	integer > 0;
-	port.default:	6600
+    port.type:  integer > 0;
+    port.default:   6600
 
 =item -h[ost] <host>
 
 Host to connect to. Default is localhost.
 
 =for Euclid:
-	host.type:	string
-	host.default:	'localhost'
+    host.type:  string
+    host.default:   'localhost'
 
 =item -H[istfile] <histfile>
 
 Location of History file
 
 =for Euclid:
-	histfile.type:		writable
-	histfile.default:	$ENV{HOME}.'/.mpd/dyn-hist'
+    histfile.type:      writable
+    histfile.default:   $ENV{HOME}.'/.mpd/dyn-hist'
 
 =item -c[ount] <count>
 
 Number of songs to remember in history
 
 =for Euclid:
-	count.type:	integer > -1
-	count.default:	20
+    count.type: integer > -1
+    count.default:  20
 
 =item -b[list] <blist>
 
 Location of Blacklist file
 
 =for Euclid:
-	blist.type:	readable
-	blist.default:	$ENV{HOME}.'/.mpd/dyn-blacklst'
+    blist.type: readable
+    blist.default:  $ENV{HOME}.'/.mpd/dyn-blacklst'
 
 =back
 
