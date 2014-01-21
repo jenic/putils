@@ -207,8 +207,6 @@ sub mpd {
         $reply[++$#reply] = $_;
     }
     chomp @reply;
-    # If nothing to return, must return 1
-    # or all hell breaks loose
     return \@reply;
 }
 
@@ -235,7 +233,12 @@ sub nowPlaying {
     my %stats = &mkassoc('currentsong');
     return "<fc=red>No Playlist</fc>" unless defined $stats{time};
     my ($c, $t) = split ':', $status{time};
-    my $percent = sprintf "%.0f", ( $c * 100 / $t );
+    my $percent = 0;
+    eval { $percent = sprintf "%.0f", ( $c * 100 / $t ); };
+    if ($@) {
+        debug( $@ );
+        debug("c = $c; t = $t; raw = $status{time}");
+    }
     my $out;
     if ($stats{title}) {
         $out = "<fc=green>".$stats{title}."</fc>";
@@ -285,6 +288,7 @@ sub isMatch {
     &debug("Binary search subroutine begins with needle $name");
 
     while ($low <= $high) {
+        # TODO: Wrap in eval?
         $mid = sprintf("%i", ($low + $high) / 2);
         # Why chomp whole array when we wont even look at half of it?
         chomp $haystack[$mid];
