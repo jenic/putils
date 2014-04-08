@@ -11,6 +11,7 @@ my %presets = (
         { plugin        => 'ALSA plug-in [plugin-container]'
         , oldmplayer    => 'MPlayer'
         , mplayer       => 'mplayer2'
+        , mpd           => 'Music Player Daemon'
         },
     # Use this to easily add features
     lambdas =>
