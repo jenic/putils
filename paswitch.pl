@@ -36,7 +36,7 @@ my %presets = (
 use constant _DEBUG => 0;
 
 use constant _APPSFORMAT => <<EOF;
-[%s]\t%s (Sink %s)
+[%s]\t%s (Sink %s) Vol: %s%%
 EOF
 
 use constant _SINKSFORMAT => <<EOF;
@@ -111,6 +111,18 @@ for (@lines) {
     }
 }
 
+@lines = `pacmd dump-volumes | grep Input`;
+# TODO: These really need to be collapsed into a complex structure
+my %volume;
+for (@lines) {
+    &debug("Volume Raw Line: $_");
+    if (/Input (\d+): volume = front-left:\s(\d+)\s/) {
+        &debug("Found index $1 w/ volume $2");
+        $volume{$1} = $2;
+    }
+}
+undef @lines;
+
 # For Debug
 if (_DEBUG) {
     &debug("Apps Hash:");
@@ -118,6 +130,9 @@ if (_DEBUG) {
 
     &debug("Appsinfo Hash:");
     &iterhash(\%appsinfo);
+
+    &debug("Volumes:");
+    &iterhash(\%volume);
 }
 
 # Main
@@ -128,6 +143,7 @@ given($ARGV[0]) {
                         , $_[0]
                         , $_[1]
                         , $appsinfo{$_[0]}
+                        , (sprintf( "%.3f", ($volume{$_[1]}/65536)) * 100)
                         )}
         );
 
