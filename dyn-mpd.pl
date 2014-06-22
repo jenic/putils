@@ -272,6 +272,8 @@ sub upBlist {
     return $blts;
 }
 
+# This is really more efficiently done using hashes however this was an
+# exercise for me so I wanted to make something using binary search
 sub isMatch {
     my ($low, $mid, $high);
     my ($name, $ref, $opt) = @_;
