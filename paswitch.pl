@@ -216,8 +216,7 @@ sub debug {
 }
 
 sub iterhash {
-    my $ref = shift;
-    my %hash = %{ $ref };
+    my %hash = %{ shift() };
     my $sub = shift || sub { &debug("$_[0] => $_[1]") };
 
     while ( my ($k, $v) = each %hash) {
