@@ -73,28 +73,31 @@ sub debug;
 sub iterhash;
 sub presets;
 
-my (%apps, %appsinfo); # appsinfo.id = apps.id
+my (%apps, %buf);
 my $state = 0;
 my ($appn, $appi); # Buffers to store matches in loop
 
-# Populate %apps and %appsinfo with running applications
+# Populate %apps with running applications
 my @lines = `pacmd list-sink-inputs`;
 for (@lines) {
     if ($state == 1 && /\t+application\.name\s=\s\"(.*)\"$/) {
-        $apps{$1} = $appn;
-        $appsinfo{$1} = $appi;
-        $appn = $appi = undef;
+        $apps{$1} = {};
+        iterhash(\%buf, sub { $apps{$1}->{$_[0]} = $_[1] });
         $state = 0;
+        %buf = ();
         next;
     } elsif ($state == 1 && /^\t+sink:\s([0-9]+)\s/) {
-        $appi = $1;
+        $buf{sink} = $1;
+    } elsif ($state == 1 && /^\t+volume: front-left: (\d+)\s/) {
+        $buf{vol} = $1;
     } elsif (/^\s+index:\s([0-9]+)$/) {
-        $appn = $1;
+        $buf{index} = $1;
         $state = 1;
     }
 }
 
 # Populate %sinks
+# sink keys correspond to app index
 @lines = `pacmd list-sinks | grep -A1 index`;
 my %sinks;
 $state = $appn = $appi = 0;
@@ -111,21 +114,9 @@ for (@lines) {
     }
 }
 
-@lines = `pacmd dump-volumes | grep Input`;
-# TODO: These really need to be collapsed into a complex structure
-my %volume;
-for (@lines) {
-    &debug("Volume Raw Line: $_");
-    if (/Input (\d+): volume = front-left:\s(\d+)\s/) {
-        &debug("Found index $1 w/ volume $2");
-        $volume{$1} = $2;
-    }
-}
-undef @lines;
-
 # For Debug
 if (_DEBUG || $ENV{DEBUG}) {
-    for ( (\%apps, \%appsinfo, \%volume) ) {
+    for ( (\%apps, \%sinks) ) {
         &debug("$_ hash:");
         &iterhash($_);
     }
@@ -137,9 +128,9 @@ given($ARGV[0]) {
         print "Default App: $presets{default}\nRunning Apps:\n";
         &iterhash(\%apps, sub { printf  ( _APPSFORMAT
                         , $_[0]
-                        , $_[1]
-                        , $appsinfo{$_[0]}
-                        , (sprintf( "%.3f", ($volume{$_[1]}/65536)) * 100)
+                        , $_[1]->{index}
+                        , $_[1]->{sink}
+                        , (sprintf( "%.3f", ($_[1]->{vol}/65536)) * 100)
                         )}
         );
 
@@ -159,8 +150,8 @@ given($ARGV[0]) {
         my $current;
         &iterhash(\%apps, sub {
                 &debug("[MAIN] $app == $_[1] ($_[0]) ?");
-                if($app == $_[1]) {
-                    $current = $appsinfo{$_[0]};
+                if($app == $_[1]->{index}) {
+                    $current = $_[1]->{sink};
                     &debug("[MAIN] Found: $current");
                     last;
                 }
