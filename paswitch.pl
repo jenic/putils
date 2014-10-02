@@ -124,15 +124,11 @@ for (@lines) {
 undef @lines;
 
 # For Debug
-if (_DEBUG) {
-    &debug("Apps Hash:");
-    &iterhash(\%apps);
-
-    &debug("Appsinfo Hash:");
-    &iterhash(\%appsinfo);
-
-    &debug("Volumes:");
-    &iterhash(\%volume);
+if (_DEBUG || $ENV{DEBUG}) {
+    for ( (\%apps, \%appsinfo, \%volume) ) {
+        &debug("$_ hash:");
+        &iterhash($_);
+    }
 }
 
 # Main
@@ -208,7 +204,7 @@ given($ARGV[0]) {
 }
 
 sub debug {
-    return unless _DEBUG;
+    return unless _DEBUG || $ENV{DEBUG};
     my ($msg) = @_;
     my ($s,$m,$h) = ( localtime(time) )[0,1,2,3,6];
     my $date = sprintf "%02d:%02d:%02d", $h, $m, $s;
