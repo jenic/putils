@@ -18,7 +18,7 @@ for my $file ( @ARGV ) {
     close FH;
 
     my $hex = sprintf "%.8X", $crc;
-    if ($file =~ /\[([A-f0-9]{8})\]/) {
+    if ($file =~ /[\[(\{\-\_]([A-f0-9]{8})[\-\_\])\}]/) {
         printf "%s\t%s\n",
             $hex,
             (hex($hex) == hex($1)) ? "MATCH" : "FAIL";
